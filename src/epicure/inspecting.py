@@ -14,7 +14,8 @@
 import numpy as np
 from skimage import filters
 from skimage.measure import regionprops
-from skimage.morphology import binary_erosion, binary_dilation, disk
+from skimage.morphology import disk
+from skimage.morphology.binary import binary_erosion, binary_dilation
 from qtpy.QtWidgets import QVBoxLayout, QWidget, QLabel
 from napari.utils import progress
 import epicure.Utils as ut
@@ -38,6 +39,10 @@ class Inspecting(QWidget):
         self.events = None
         self.win_size = 10
         self.event_class = self.epicure.event_class
+        # Buffers for efficient property updates
+        self._label_buffer = None
+        self._id_buffer = None
+        self._score_buffer = None
 
         ## Print the current number of events
         self.nevents_print = QLabel("")
@@ -175,6 +180,10 @@ class Inspecting(QWidget):
         pts = []
         self.events = self.viewer.add_points( np.array(pts), properties=features, face_color="red", size = 10, symbol='x', name=self.eventlayer_name, scale=self.viewer.layers["Segmentation"].scale )
         self.event_types = {}
+        # Initialize empty buffers
+        self._label_buffer = None
+        self._id_buffer = None
+        self._score_buffer = None
         self.update_nevents_display()
         self.epicure.finish_update()
 
@@ -185,6 +194,10 @@ class Inspecting(QWidget):
         colors = np.repeat("white", len(pts))
         self.events = self.viewer.add_points( np.array(pts), properties=features, face_color=colors, size = 10, symbol=symbols, name=self.eventlayer_name, scale=self.viewer.layers["Segmentation"].scale )
         self.event_types = event_types
+        # Initialize buffers for efficient updates
+        self._label_buffer = np.array(list(features["label"]), dtype=self.epicure.dtype)
+        self._id_buffer = np.array(list(features["id"]), dtype="uint16")
+        self._score_buffer = np.array(list(features["score"]), dtype="uint8")
 
         ## set the display of division events
         self.events.selected_data = {}
@@ -223,6 +236,7 @@ class Inspecting(QWidget):
             return 0
         if not only_suspect:
             return len(self.events.properties["score"])
+            
         return ( len(self.events.properties["score"]) - self.nb_type("division") - self.nb_type("extrusion") )
 
     def get_events_from_type( self, feature ):
@@ -537,7 +551,19 @@ class Inspecting(QWidget):
         if self.event_types.get(feature) is None:
             self.event_types[feature] = []
         self.event_types[feature].append(sid)
-        self.events.properties["score"][ind] = self.events.properties["score"][ind] + 1
+        # Update score using buffer if available, else fallback
+        if self._score_buffer is not None and ind < len(self._score_buffer):
+            self._score_buffer[ind] += 1
+        else:
+            # Fallback: directly update napari properties
+            current_props = dict(self.events.properties)
+            scores = np.array(list(current_props["score"]), dtype="uint8")
+            scores[ind] += 1
+            self.events.properties = {
+                "label": current_props["label"],
+                "id": current_props["id"],
+                "score": scores
+            }
 
     def first_event(self, pos, label, featurename):
         """ Addition of the first event (initialize all) """
@@ -549,6 +575,10 @@ class Inspecting(QWidget):
         features["score"] = np.array([0], dtype="uint8")
         pts = [pos]
         self.events = self.viewer.add_points( np.array(pts), properties=features, face_color="score", size = int( self.event_size.value() ), symbol="x", name="Events", scale=self.viewer.layers["Segmentation"].scale )
+        # Initialize buffers
+        self._label_buffer = features["label"].copy()
+        self._id_buffer = features["id"].copy()
+        self._score_buffer = features["score"].copy()
         self.add_event_type(0, sid, featurename)
         self.events.refresh()
         self.update_nevents_display()
@@ -586,9 +616,19 @@ class Inspecting(QWidget):
             ind = len(self.events.data)
             sid = self.new_event_id()
             self.events.add(pos)
-            self.events.properties["label"][ind] = label
-            self.events.properties["id"][ind] = sid
-            self.events.properties["score"][ind] = 0
+            
+            # Initialize or update buffers for efficient batch updates
+            if self._label_buffer is None or ind >= len(self._label_buffer):
+                # First time: create buffers from current properties
+                current_props = dict(self.events.properties)
+                self._label_buffer = np.array(list(current_props["label"]), dtype=self.epicure.dtype)
+                self._id_buffer = np.array(list(current_props["id"]), dtype="uint16")
+                self._score_buffer = np.array(list(current_props["score"]), dtype="uint8")
+            
+            # Update buffers in-place (O(1) operation)
+            self._label_buffer[ind] = label
+            self._id_buffer[ind] = sid
+            self._score_buffer[ind] = 0
             self.add_event_type(ind, sid, reason)
 
         self.events.symbol.flags.writeable = True
@@ -599,6 +639,13 @@ class Inspecting(QWidget):
 
     def refresh_events( self ):
         """ Refresh event view and text """
+        # Sync buffers back to napari layer
+        if self._label_buffer is not None:
+            self.events.properties = {
+                "label": self._label_buffer,
+                "id": self._id_buffer,
+                "score": self._score_buffer
+            }
         self.events.refresh()
         self.update_nevents_display()
         self.reset_event_range()
@@ -742,6 +789,10 @@ class Inspecting(QWidget):
         ut.remove_layer(self.viewer, "Events")
         self.events = self.viewer.add_points( np.array(pts), properties=features, face_color="red", size = 10, symbol='x', name="Events", scale=self.viewer.layers["Segmentation"].scale )
         self.event_types = {}
+        # Clear buffers
+        self._label_buffer = None
+        self._id_buffer = None
+        self._score_buffer = None
         self.update_nevents_display()
         #self.update_nevents_display()
         self.epicure.finish_update()
@@ -772,8 +823,23 @@ class Inspecting(QWidget):
 
     def decrease_score(self, ind):
         """ Decrease by one score of event at index ind. Delete it if reach 0"""
-        self.events.properties["score"][ind] = self.events.properties["score"][ind] - 1
-        if self.events.properties["score"][ind] == 0:
+        # Update score using buffer if available
+        if self._score_buffer is not None and ind < len(self._score_buffer):
+            self._score_buffer[ind] -= 1
+            score_val = self._score_buffer[ind]
+        else:
+            # Fallback: directly update napari properties
+            current_props = dict(self.events.properties)
+            scores = np.array(list(current_props["score"]), dtype="uint8")
+            scores[ind] -= 1
+            score_val = scores[ind]
+            self.events.properties = {
+                "label": current_props["label"],
+                "id": current_props["id"],
+                "score": scores
+            }
+        
+        if score_val == 0:
             self.exonerate_one( ind, remove_division=False )
             self.update_nevents_display()
 
@@ -842,6 +908,10 @@ class Inspecting(QWidget):
             self.epicure.tracking.remove_division( self.events.properties["label"][ind] )
         self.events.remove_selected()
         self.remove_event_types(sid)
+        # Clear buffers since layer structure changed
+        self._label_buffer = None
+        self._id_buffer = None
+        self._score_buffer = None
         
     def clear_event(self):
         """ Remove the current event """
@@ -872,6 +942,10 @@ class Inspecting(QWidget):
         if len(selected) > 0:
             self.events.selected_data = selected
             self.events.remove_selected()
+            # Clear buffers since layer structure changed
+            self._label_buffer = None
+            self._id_buffer = None
+            self._score_buffer = None
             self.update_nevents_display()
                 
 
@@ -1129,14 +1203,27 @@ class Inspecting(QWidget):
         labels, lengths, positions = self.epicure.tracking.get_small_tracks( max_len )
         ## remove track from first and last frame
         first_tracks = self.epicure.tracking.get_tracks_on_frame( 0 )
-        last_tracks = self.epicure.tracking.get_tracks_on_frame( self.epicure.nframes-1 ) 
-        for label, nframe, pos in zip(labels, lengths, positions):
+        last_tracks = self.epicure.tracking.get_tracks_on_frame( self.epicure.nframes-1 )
+        
+        # Add progress indication for processing events
+        ntracks = len(labels)
+        if ntracks > 0:
+            pbar = ut.start_progress( self.viewer, total=ntracks, descr="Processing track length events" )
+        
+        for i, (label, nframe, pos) in enumerate(zip(labels, lengths, positions)):
             if label in first_tracks or label in last_tracks:
                 ## present in the first or last track, don't check it
+                if ntracks > 0:
+                    pbar.update(i + 1)
                 continue
             if self.epicure.verbose > 2:
                 print("event track length "+str(nframe)+": "+str(label)+" frame "+str(pos[0]) )
             self.add_event(pos, label, "track-length", refresh=False)
+            if ntracks > 0:
+                pbar.update(i + 1)
+        
+        if ntracks > 0:
+            ut.close_progress( self.viewer, pbar )
         self.refresh_events()
     
     def inspect_tracks( self, subprogress=True ):
@@ -1196,6 +1283,12 @@ class Inspecting(QWidget):
         do_divisions = self.get_division.isChecked()
         do_apparition = self.get_apparition.isChecked()
         apparitions = {}
+        
+        # Progress indication
+        nctracks = len(ctracks)
+        if nctracks > 0:
+            pbar = ut.start_progress( self.viewer, total=nctracks, descr="Checking track apparitions" )
+        
         for i, track_id in enumerate( ctracks) :
             fframe = self.epicure.tracking.get_first_frame( track_id )
             ## If on the border, ignore
@@ -1204,6 +1297,8 @@ class Inspecting(QWidget):
             #    continue
             ## Not on border, check if potential division
             if (graph is not None) and (track_id in graph.keys()):
+                if nctracks > 0:
+                    pbar.update(i + 1)
                 continue
             ## event apparition
             if (not do_divisions) and do_apparition:
@@ -1213,6 +1308,13 @@ class Inspecting(QWidget):
                     apparitions[fframe] = [track_id]
                 else:
                     apparitions[fframe].append(track_id)
+            
+            if nctracks > 0:
+                pbar.update(i + 1)
+        
+        if nctracks > 0:
+            ut.close_progress( self.viewer, pbar )
+        
         if do_divisions:
             self.apparition_or_division( apparitions, do_apparition )
         self.refresh_events()
@@ -1285,11 +1387,10 @@ class Inspecting(QWidget):
         ## Track disappears in the movie, not last frame
         ctracks = list( set(tracks) - set( self.epicure.tracking.get_tracks_on_frame( self.epicure.nframes-1 ) ) )
         threshold_area = float(self.threshold_disparition.text())
-        if progress_bar is not None:
-            sub_bar = progress( total = len( ctracks ), desc="Check non last frame tracks", nest_under = progress_bar )
+        
         for i, track_id in enumerate( ctracks ):
             if progress_bar is not None:
-                sub_bar.update( i )
+                progress_bar.set_description(f"Check track disparition: {i+1}/{len(ctracks)}")
             lframe = self.epicure.tracking.get_last_frame( track_id )
             ## If on the border, ignore
             #outside = self.epicure.cell_on_border( track_id, lframe )
@@ -1326,8 +1427,6 @@ class Inspecting(QWidget):
                 if self.epicure.verbose > 2:
                     print("Disappearing track: "+str(track_id)+" at frame "+str(lframe) )
                 self.add_event(pos, track_id, "track-disparition", refresh=False)
-        if progress_bar is not None:
-            sub_bar.close()
         self.refresh_events()
         if self.epicure.verbose > 1:
             ut.show_duration( start_time, "Tracks disparition took " )
@@ -1339,13 +1438,11 @@ class Inspecting(QWidget):
         ## Track disappears in the movie, not last frame
         ctracks = tracks
         min_gaps = int(self.min_gaps.text())
-        if progress_bar is not None:
-            sub_bar = progress( total = len( ctracks ), desc="Check gaps in tracks", nest_under = progress_bar )
         gaped = self.epicure.tracking.check_gap( ctracks, verbose=0 )
         if len( gaped ) > 0:
             for i, track_id in enumerate( gaped ):
                 if progress_bar is not None:
-                    sub_bar.update( i )
+                    progress_bar.set_description(f"Check track gaps: {i+1}/{len(gaped)}")
                 gap_frames = self.epicure.tracking.gap_frames( track_id )
                 if len( gap_frames ) > 0:
                     gaps = ut.get_consecutives( gap_frames )
@@ -1359,8 +1456,6 @@ class Inspecting(QWidget):
                                 if self.epicure.verbose > 2:
                                     print("Gap in track: "+str(track_id)+" at frame "+str(poszxy[0]) )
                                 self.add_event(poszxy, track_id, "track-gap", refresh=False)
-        if progress_bar is not None:
-            sub_bar.close()
         self.refresh_events()
         if self.epicure.verbose > 1:
             ut.show_duration( start_time, "Tracks gaps took " )
@@ -1373,7 +1468,13 @@ class Inspecting(QWidget):
 
         graph = self.epicure.tracking.graph
         if graph is not None:
-            for child, parent in graph.items():
+            # Add progress indication
+            graph_items = list(graph.items())
+            ngraph = len(graph_items)
+            if ngraph > 0:
+                pbar = ut.start_progress( self.viewer, total=ngraph, descr="Processing track merging events" )
+            
+            for i, (child, parent) in enumerate(graph_items):
                 ## 2->1, merge, event
                 if isinstance(parent, list) and len(parent) == 2:
                     onetwoone = False
@@ -1396,6 +1497,12 @@ class Inspecting(QWidget):
                         else:
                             if self.epicure.verbose > 1:
                                 print("Something weird, "+str(child)+" mean position")
+                
+                if ngraph > 0:
+                    pbar.update(i + 1)
+            
+            if ngraph > 0:
+                ut.close_progress( self.viewer, pbar )
 
         self.refresh_events()
 
@@ -1596,11 +1703,9 @@ class Inspecting(QWidget):
     def track_position_jump( self, track_ids, progress_bar ):
         """ Look at jump in the track position """
         factor = float( self.jump_factor.text() )
-        if progress_bar is not None:
-            sub_bar = progress( total = len( track_ids ), desc="Check position jump in tracks", nest_under = progress_bar )
         for i, tid in enumerate(track_ids):
             if progress_bar is not None:
-                sub_bar.update(i)
+                progress_bar.set_description(f"Check position jump in tracks: {i+1}/{len(track_ids)}")
             track_indexes = self.epicure.tracking.get_track_indexes( tid )
             ## track should be long enough to make sense to look for outlier
             if len(track_indexes) > 3:
@@ -1611,8 +1716,6 @@ class Inspecting(QWidget):
                     if self.epicure.verbose > 1:
                         print("event track jump: "+str(tdata[0])+" "+" frame "+str(tdata[1]) )
                     self.add_event( tdata[1:4], tid, "track-jump", refresh=False )
-        if progress_bar is not None:
-            sub_bar.close()
         self.refresh_events()
 
         
@@ -1631,7 +1734,13 @@ class Inspecting(QWidget):
             featType["Eccentricity"] = "shape"
             featType["Solidity"] = "shape"
             shape_factor = float(self.shape_variability.text())
-        for tid in track_ids:
+        
+        # Add progress indication
+        ntracks = len(track_ids)
+        if ntracks > 0:
+            pbar = ut.start_progress( self.viewer, total=ntracks, descr="Processing track features" )
+        
+        for i, tid in enumerate(track_ids):
             track_indexes = self.epicure.tracking.get_track_indexes( tid )
             ## track should be long enough to make sense to look for outlier
             if len(track_indexes) > 3:
@@ -1647,6 +1756,12 @@ class Inspecting(QWidget):
                         if self.epicure.verbose > 1:
                             print("event track "+feature+": "+str(tdata[0])+" "+" frame "+str(tdata[1]) )
                         self.add_event(tdata[1:4], tid, "track_"+featType[feature], refresh=False)
+            
+            if ntracks > 0:
+                pbar.update(i + 1)
+        
+        if ntracks > 0:
+            ut.close_progress( self.viewer, pbar )
         self.refresh_events()
 
     def find_jump( self, tab, factor=1, min_value=None ):
