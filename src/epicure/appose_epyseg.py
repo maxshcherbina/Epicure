@@ -2,6 +2,7 @@ import appose
 import numpy as np
 import logging
 from importlib import resources
+import platform
 
 def share_as_ndarray(img: np.ndarray) -> appose.NDArray:
     """Copies a NumPy array into a same-sized newly allocated block of shared memory."""
@@ -15,7 +16,13 @@ def go_epyseg( image, parameters, progress_bar=None, logger=None ):
     try:
         pixi_file = resources.files("epicure.resources").joinpath("pixi.toml")
         _logger.info("Build/Load napari_epyseg environement")
-        env = appose.pixi( pixi_file ).log_debug().build()
+        env = appose.pixi( pixi_file ).log_debug()
+        env = env.subscribe_output( lambda line: print("OUT:", line, end="") )
+        env = env.subscribe_error( lambda line: print("DBG:", line, end="") )
+        ## get cuda installation if Linux or Windows (tensorflow with cuda)
+        is_gpu_platform = platform.system() in ("Linux", "Windows")
+        env_name = "cuda" if is_gpu_platform else "default"
+        env = env.environment(env_name).build()
         _logger.info(f"Environment built at: {env.base()}")
         _logger.info( "Initiate environment to run epyseg" )
         python = env.python().init("import numpy as np; import napari_epyseg; from napari_epyseg.call_epyseg import run_epyseg")

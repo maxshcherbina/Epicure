@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "epicure"
-version = "1.5.3"
+version = "1.5.4"
 description = "Napari plugin to manually correct epithelia segmentation in movies"
 license.file = "LICENSE"
 readme = "README.md"
@@ -19,10 +19,12 @@ classifiers = [
 	"Programming Language :: Python :: 3.9",
 	"Programming Language :: Python :: 3.10",
 	"Programming Language :: Python :: 3.11",
+	"Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Image Processing",
 ]
 dependencies = [
     "napari",
+	"vispy<0.16", ## something weird happens between napari and vispy 0.16. Might be fixed soonish and could be removed then
     "numpy",
     "qtpy",
 	"bioio",
