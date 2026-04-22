@@ -36,10 +36,17 @@ try:
 except:
     from skimage.future.graph import RAG  ## older version of scikit-image
 
-try:
-    from skimage.morphology import binary_dilation
-except:
-    from skimage.morphology import dilation as binary_dilation
+import skimage
+if Version(skimage.__version__) > Version("0.25"):
+    try:
+        from skimage.morphology import dilation as binary_dilation 
+    except:
+        from skimage.morphology import binary_dilation
+else:
+    try:
+        from skimage.morphology import binary_dilation
+    except:
+        from skimage.morphology import dilation as binary_dilation
 
 def show_info(message):
     """ Display info in napari """

@@ -30,10 +30,17 @@ except:
     pass
 
 from skimage.morphology import disk
-try:
-    from skimage.morphology import binary_erosion
-except:
-    from skimage.morphology import erosion as binary_erosion 
+import skimage
+if ut.version_above( skimage, "0.25" ):
+    try:
+        from skimage.morphology import erosion as binary_erosion 
+    except:
+        from skimage.morphology import binary_erosion
+else:
+    try:
+        from skimage.morphology import binary_erosion
+    except:
+        from skimage.morphology import erosion as binary_erosion 
     
 
 class Outputing(QWidget):
@@ -1669,16 +1676,43 @@ class TemporalPlots(QWidget):
         #    self.fig.add_vline( x=frame, line_dash="dash", line_color="gray" )
         #    self.browser.setHtml( self.fig.to_html(include_plotlyjs='cdn'))
 
+
+
+    def import_webengineview(self):
+        """Return QWebEngineView from whichever Qt is available."""
+        import importlib
+        try:
+            # Fall back to Qt5
+            mod = importlib.import_module("PyQt5.QtWebEngineWidgets")
+            self.browser = mod.QWebEngineView(self)
+            return 
+        except Exception:
+            pass
+        
+        try:
+            # Try Qt6 first
+            view = importlib.import_module("PyQt6.QtWebEngineWidgets")
+            self.browser = view.QWebEngineView( parent=self )
+            return  
+        except Exception as e:
+            print(e)
+            pass
+
+        raise ImportError(
+            "No QtWebEngine found. Install PyQt6-WebEngine or PyQtWebEngine."
+        )
+
+
     def create_plotwidget(self):
         """ Create plot window """
         try:
-            from qtpy.QtWebEngineWidgets import QWebEngineView 
+            self.import_webengineview()
             self.webengine = True
         except:
             self.webengine = False
             self.browser = NoEngineViewer()
             return self.browser
-        self.browser = QWebEngineView(self)
+        print(self.webengine)
         return self.browser
 
 class NoEngineViewer(QWidget):
