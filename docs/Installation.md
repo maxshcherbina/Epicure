@@ -56,6 +56,9 @@ pip install epicure
 ```
 to install EpiCure with its dependencies.
 
+!!! note "PyQt version"
+    From EpiCure version 1.5.5, the default backend installation will be PyQt6, following napari's default installation (see [here](https://napari.org/dev/getting_started/installation.html#choosing-a-different-qt-backend)). If you need PyQt5 instead, epicure can be installed as `pip install epicure[pyqt5]`. You might have to also force napari installation to PyQt5 `pip install napari[pyqt5]`. If necessary, remove PyQt6 librairies and set QT_API to pyqt5. See also this [issue](https://github.com/Image-Analysis-Hub/Epicure/issues/13).
+
 ### Step 4: Open napari and start using EpiCure
 You can open napari by writing `napari` in the terminal. 
 It is often slow to open the first time but that’s it. 
