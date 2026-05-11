@@ -1,5 +1,4 @@
-from asyncio import graph
-from typing import Dict, List, Literal
+from typing import Dict, List
 
 import geff
 import geff_spec
@@ -8,15 +7,13 @@ import numpy as np
 import pandas as pd
 from scipy.cluster.hierarchy import DisjointSet
 
-# @gaelle: 
+# @gaelle:
 # - do you want to store features like centroid, area...?
-# - les coordonnées x, y dans epic.tracking.track_data sont bien en pixels, et t en frame ?
-# Si oui, pour le moment je stocke ces infos telles quelles dans le geff en précisant 
-# dans les métadonnés des axes qu'il y a un facteur de scale et une unité physique si
-# jamais l'utilisateur souhaite convertir.
 
 
-def create_label_to_track_mapping(divisions: Dict[int, List[int]], unique_labels: List[int]) -> Dict[int, int]:
+def create_label_to_track_mapping(
+    divisions: Dict[int, List[int]], unique_labels: List[int]
+) -> Dict[int, int]:
     """
     Create a mapping from labels to track IDs using scipy's DisjointSet for efficient track grouping.
 
@@ -51,13 +48,15 @@ def create_label_to_track_mapping(divisions: Dict[int, List[int]], unique_labels
     return label_to_track_id
 
 
-def build_nodes_df(track_data: np.ndarray, divisions: Dict[int, List[int]]) -> pd.DataFrame:
+def build_nodes_df(
+    track_data: np.ndarray, divisions: Dict[int, List[int]]
+) -> pd.DataFrame:
     """Build a DataFrame representing the nodes for the GEFF graph."""
     df = pd.DataFrame(track_data, columns=["label", "frame", "x", "y"])
     df["node_id"] = df.index
 
     # Generate and assign track IDs.
-    labels = df["label"].unique()
+    labels = list(df["label"].unique())
     label_to_track_id = create_label_to_track_mapping(divisions, labels)
     df["track_id"] = df["label"].map(label_to_track_id)
 
@@ -72,7 +71,11 @@ def build_edges_df(divisions: Dict[int, List[int]], df_nodes: pd.DataFrame):
             print("FUSION")
 
     # Division edges: for each daughter-mother pair, create an edge.
-    edges_data = [{"daughter": daughter, "mother": mother} for daughter, mothers in divisions.items() for mother in mothers]
+    edges_data = [
+        {"daughter": daughter, "mother": mother}
+        for daughter, mothers in divisions.items()
+        for mother in mothers
+    ]
     df_edges = pd.DataFrame(edges_data)
     # Labels stay the same until there is a division. But node IDs are unique.
     # It means that in df_nodes, labels appears multiple times. Because of this
@@ -87,8 +90,12 @@ def build_edges_df(divisions: Dict[int, List[int]], df_nodes: pd.DataFrame):
     # Now we can map between df_nodes and df_edges.
     # The in_id is the node ID of the matching label that is a mother,
     # and the out_id is the node ID of the matching label that is a daughter.
-    df_edges["in_id"] = df_edges["mother"].map(df_nodes[df_nodes["mother"]].set_index("label")["node_id"])
-    df_edges["out_id"] = df_edges["daughter"].map(df_nodes[df_nodes["daughter"]].set_index("label")["node_id"])
+    df_edges["in_id"] = df_edges["mother"].map(
+        df_nodes[df_nodes["mother"]].set_index("label")["node_id"]
+    )
+    df_edges["out_id"] = df_edges["daughter"].map(
+        df_nodes[df_nodes["daughter"]].set_index("label")["node_id"]
+    )
     df_nodes.drop(columns=["daughter", "mother"], inplace=True)
 
     # Non-division edges: for each label, connect consecutive nodes within that label.
@@ -99,7 +106,9 @@ def build_edges_df(divisions: Dict[int, List[int]], df_nodes: pd.DataFrame):
             for i in range(len(label_spots) - 1):
                 current_spot = label_spots.iloc[i]
                 next_spot = label_spots.iloc[i + 1]
-                non_division_edges.append({"in_id": current_spot["node_id"], "out_id": next_spot["node_id"]})
+                non_division_edges.append(
+                    {"in_id": current_spot["node_id"], "out_id": next_spot["node_id"]}
+                )
 
     # Combine division and non-division edges.
     df_non_division_edges = pd.DataFrame(non_division_edges)
@@ -129,60 +138,57 @@ def build_nx_digraph(epic) -> nx.DiGraph:
     df_edges = build_edges_df(epic.tracking.graph, df_nodes)
 
     graph = nx.from_pandas_edgelist(
-        df_edges,
-        source="in_id",
-        target="out_id",
-        create_using=nx.DiGraph
+        df_edges, source="in_id", target="out_id", create_using=nx.DiGraph
     )
     node_attrs = {row["node_id"]: row.to_dict() for _, row in df_nodes.iterrows()}
     nx.set_node_attributes(graph, node_attrs)
-    
+
     return graph
 
 
 def build_props_metadata() -> Dict[str, geff_spec.PropMetadata]:
     """Build GEFF properties metadata."""
-    # TODO @gaelle: 
-    # - change the dtype to what you think is best
+    # TODO @gaelle:
+    # - change the dtype to what you think is best (numpy format dtype)
     # - modify the name/description as you see fit, or you can delete these fields since they are optional
     md_x = geff_spec.PropMetadata(
-            identifier="x",
-            dtype="float64",
-            varlength=False,
-            unit="pixel",
-            name="x",
-            description="X coordinate of the node",
-        )
+        identifier="x",
+        dtype="float64",
+        varlength=False,
+        unit="pixel",
+        name="x",
+        description="X coordinate of the node",
+    )
     md_y = geff_spec.PropMetadata(
-            identifier="y",
-            dtype="float64",
-            varlength=False,
-            unit="pixel",
-            name="y",
-            description="Y coordinate of the node",
-        )
+        identifier="y",
+        dtype="float64",
+        varlength=False,
+        unit="pixel",
+        name="y",
+        description="Y coordinate of the node",
+    )
     md_t = geff_spec.PropMetadata(
-            identifier="t",
-            dtype="int64",
-            varlength=False,
-            unit="frame",
-            name="t",
-            description="Time coordinate of the node",
-        )
+        identifier="t",
+        dtype="int64",
+        varlength=False,
+        unit="frame",
+        name="t",
+        description="Time coordinate of the node",
+    )
     md_label = geff_spec.PropMetadata(
-            identifier="label",
-            dtype="int64",
-            varlength=False,
-            name="label",
-            description="Label of the node",
-        )
+        identifier="label",
+        dtype="int64",
+        varlength=False,
+        name="label",
+        description="Label of the node",
+    )
     md_nid = geff_spec.PropMetadata(
-            identifier="node_id",
-            dtype="int64",
-            varlength=False,
-            name="node_id",
-            description="Unique identifier of the node",
-        )
+        identifier="node_id",
+        dtype="int64",
+        varlength=False,
+        name="node_id",
+        description="Unique identifier of the node",
+    )
 
     return {"x": md_x, "y": md_y, "t": md_t, "label": md_label, "node_id": md_nid}
 
@@ -195,21 +201,21 @@ def build_geff_metadata(epic):
             type="space",
             unit="pixel",
             scale=epic.epi_metadata.get("ScaleXY", 1),
-            scaled_unit=epic.epi_metadata.get('UnitXY'),
+            scaled_unit=epic.epi_metadata.get("UnitXY"),
         ),
         vertical=geff_spec.Axis(
             name="y",
             type="space",
             unit="pixel",
             scale=epic.epi_metadata.get("ScaleXY", 1),
-            scaled_unit=epic.epi_metadata.get('UnitXY'),
+            scaled_unit=epic.epi_metadata.get("UnitXY"),
         ),
         time=geff_spec.Axis(
             name="t",
             type="time",
             unit="frame",
             scale=epic.epi_metadata.get("ScaleT", 1),
-            scaled_unit=epic.epi_metadata.get('UnitT'),
+            scaled_unit=epic.epi_metadata.get("UnitT"),
         ),
     )
     display_hints = geff_spec.DisplayHint(
@@ -222,26 +228,29 @@ def build_geff_metadata(epic):
         directed=True,
         axes=axes,
         display_hints=display_hints,
-        node_props_metadata=build_props_metadata(epic.epi_metadata),
+        node_props_metadata=build_props_metadata(),
         track_node_props={"lineage": "track_id", "tracklet": "label"},
-        related_objects=[geff_spec.RelatedObject(type="labels", 
-                                                 path="../labels.tiff", 
-                                                 label_prop="label"),
-                                                 ],
+        related_objects=[
+            geff_spec.RelatedObject(
+                type="labels",
+                path="../labels.tiff",  # TODO
+                label_prop="label",
+            ),
+        ],
     )
 
 
-def save_geff(epic, outname, zarr_format: Literal[2, 3] = 2):
+def save_geff(epic, outname):
     """Save a GEFF file."""
 
     geff_graph = build_nx_digraph(epic)
     geff_md = build_geff_metadata(epic)
 
     geff.write(
-            geff_graph,
-            outname,
-            metadata=geff_md,
-            zarr_format=zarr_format,
-            structure_validation=True,
-            overwrite=True,
-        )
+        geff_graph,
+        outname,
+        metadata=geff_md,
+        zarr_format=2,  # could be 3 but 2 by default in GEFF
+        structure_validation=True,
+        overwrite=True,
+    )
