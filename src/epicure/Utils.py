@@ -1176,6 +1176,13 @@ def shortcut_click_match( shortcut, event ):
             return False
         return True
 
+def is_windows():
+    """ Is running on windows or not """
+    try:
+        return platform.lower().startswith("win")
+    except:
+        return False
+
 def is_darwin():
     """ Test if OS is MacOS or not """
     try:
