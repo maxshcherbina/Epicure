@@ -6,10 +6,10 @@ import epicure.Utils as ut
 from epicure.start_epicuring import gui_files
 
 
-def test_load_movie():
+def test_load_movie( make_napari_viewer ):
     """ Read a standard tif movie """
     test_img = os.path.join(".", "test_data", "003_crop.tif")
-    viewer = napari.Viewer(show=False) #make_napari_viewer()
+    viewer = make_napari_viewer()
     epic = epi.EpiCure(viewer)
     epic.load_movie(test_img)
     assert epic.img.shape == (11,189,212)
