@@ -804,10 +804,11 @@ class EpiCure:
         """Load saved infos from file"""
         infile = open(epiname, "rb")
         try:
-            if ut.is_windows():  
-                epidata = pickle.load( infile, encoding="utf8" )
-            else:
-                epidata = pickle.load( infile )
+            if ut.is_windows():
+               import pathlib
+               pathlib.PosixPath = pathlib.WindowsPath
+               #epidata = pickle.load( infile, encoding="utf8" )
+            epidata = pickle.load( infile )
             #print(epidata)
             if "EpiMetaData" in epidata.keys():
                 # version of epicure file after Epicure 0.2.0
