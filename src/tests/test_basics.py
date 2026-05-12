@@ -19,7 +19,8 @@ def test_load_image():
     """ Read a single image and a cellpose (labels) segmentation """
     test_img = os.path.join(".", "test_data", "static_image.tif")
     test_seg = os.path.join(".", "test_data", "static_image_cellpose.tif")
-    epic = epi.EpiCure()
+    viewer = napari.Viewer(show=False)
+    epic = epi.EpiCure(viewer)
     epic.load_movie(test_img)
     assert epic.img.shape == (1,507,585)
     epic.load_segmentation(test_seg)

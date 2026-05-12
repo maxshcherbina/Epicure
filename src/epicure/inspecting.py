@@ -537,6 +537,7 @@ class Inspecting(QWidget):
         if self.event_types.get(feature) is None:
             self.event_types[feature] = []
         self.event_types[feature].append(sid)
+        self.events.properties["score"].flags.writeable = True
         self.events.properties["score"][ind] = self.events.properties["score"][ind] + 1
 
     def first_event(self, pos, label, featurename):
@@ -549,6 +550,7 @@ class Inspecting(QWidget):
         features["score"] = np.array([0], dtype="uint8")
         pts = [pos]
         self.events = self.viewer.add_points( np.array(pts), properties=features, face_color="score", size = int( self.event_size.value() ), symbol="x", name="Events", scale=self.viewer.layers["Segmentation"].scale )
+        self.events.properties.flags.writeable = True
         self.add_event_type(0, sid, featurename)
         self.events.refresh()
         self.update_nevents_display()
