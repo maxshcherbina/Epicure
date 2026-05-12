@@ -10,17 +10,6 @@ on:
       - 'requirements*.txt'
       - '.github/workflows/cross-platform.yml'
 
-on:
-  push:
-    branches:
-      - main
-      - release/**     # release/1.0, release/2.x, etc.
-    tags:
-      - 'v*'           # v1.0, v2.3.1, etc.
-  pull_request:
-    branches:
-      - main
-
 jobs:
   test:
     runs-on: ${{ matrix.os }}
