@@ -784,7 +784,9 @@ class Inspecting(QWidget):
 
     def decrease_score(self, ind):
         """ Decrease by one score of event at index ind. Delete it if reach 0"""
-        self.events.properties["score"][ind] = self.events.properties["score"][ind] - 1
+        score = self.events.properties["score"]
+        score.flags.writeable = True
+        score[ind] = score[ind] - 1
         if self.events.properties["score"][ind] == 0:
             self.exonerate_one( ind, remove_division=False )
             self.update_nevents_display()
