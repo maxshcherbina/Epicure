@@ -539,6 +539,7 @@ class Inspecting(QWidget):
         self.event_types[feature].append(sid)
         self.events.properties["score"].flags.writeable = True
         self.events.properties["score"][ind] = self.events.properties["score"][ind] + 1
+        self.events.properties()
 
     def first_event(self, pos, label, featurename):
         """ Addition of the first event (initialize all) """
