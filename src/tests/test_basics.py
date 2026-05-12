@@ -6,7 +6,7 @@ import epicure.Utils as ut
 from epicure.start_epicuring import gui_files
 
 
-def test_load_movie():
+def test_load_movie(make_napari_viewer):
     """ Read a standard tif movie """
     test_img = os.path.join(".", "test_data", "003_crop.tif")
     viewer = make_napari_viewer()
@@ -105,6 +105,7 @@ def test_load_from_layers():
     #viewer.show() # manual check
     
 if __name__ == "__main__":
+    test_load_movie()
     test_load_from_layers()
     test_load_image()
     print("********* Test basics completed ***********")
