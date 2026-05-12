@@ -2,13 +2,14 @@ import numpy as np
 import os
 import epicure.epicuring as epi
 
-def test_track_methods():
+def test_track_methods(make_napari_viewer):
     """ Tracking with EpiCure with Laptrack, different parameters """
     test_img = os.path.join(".", "test_data", "003_crop.tif")
     test_seg = os.path.join(".", "test_data", "003_crop_epyseg.tif")
 
     ## load and initialize
-    epic = epi.EpiCure()
+    viewer = make_napari_viewer()
+    epic = epi.EpiCure(viewer)
     epic.load_movie(test_img)
     epic.go_epicure("test_epics", test_seg)
 

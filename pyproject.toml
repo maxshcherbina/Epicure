@@ -54,11 +54,12 @@ pyqt5 = [
 ]
 
 testing = [
+    "tox",
     "pytest",
-    "pytest-qt",
-    "pytest-xvfb",    # ← handles virtual display automatically on Linux
     "pytest-cov",
-	"napari[testing]",
+    "pytest-qt",
+    "napari",
+    "pyqt5",
 ]
 
 [project.urls]

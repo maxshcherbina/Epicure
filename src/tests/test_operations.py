@@ -4,11 +4,12 @@ import epicure.epicuring as epi
 import epicure.Utils as ut
 import napari
 
-def test_get_free_label():
+def test_get_free_label( make_napari_viewer ):
     ## test from a skeletonized movie
     test_mov = os.path.join(".", "test_data", "003_crop.tif")
     test_seg = os.path.join(".", "test_data", "003_crop_epyseg.tif")
-    epic = epi.EpiCure()
+    viewer = make_napari_viewer()
+    epic = epi.EpiCure(viewer)
     epic.load_movie(test_mov)
     #epic.viewer = napari.Viewer(show=False)
     epic.go_epicure("epics", test_seg)
@@ -29,11 +30,11 @@ def test_get_free_label():
 #    epic.inspecting.first_event((0,10,20), 10, "suspect")
 #    assert "Events" in epic.viewer.layers 
     
-def utils_value():
+def utils_value(make_napari_viewer):
     """ Labels operations in Utils """
     test_mov = os.path.join(".", "test_data", "003_crop.tif")
     test_seg = os.path.join(".", "test_data", "003_crop_epyseg.tif")
-    viewer = napari.Viewer(show=False)
+    viewer = make_napari_viewer()
     epic = epi.EpiCure(viewer)
     epic.load_movie(test_mov)
     epic.go_epicure("epics", test_seg)

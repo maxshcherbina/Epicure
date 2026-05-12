@@ -6,11 +6,11 @@ import epicure.Utils as ut
 import napari
 from vispy import keys
 
-def test_epicuring_bindings():
+def test_epicuring_bindings( make_napari_viewer ):
     """ Test shortcuts for displaying layers """
     test_img = os.path.join(".", "test_data", "003_crop.tif")
     test_seg = os.path.join(".", "test_data", "003_crop_epyseg.tif")
-    viewer = napari.Viewer(show=False)
+    viewer = make_napari_viewer()
     epic = epi.EpiCure(viewer)
     epic.load_movie(test_img)
     epic.go_epicure("test_epics", test_seg)
@@ -31,10 +31,10 @@ def test_epicuring_bindings():
     view.canvas.events.key_press(key=keys.Key("g"), modifiers=[])
     assert "EpicGrid" in epic.viewer.layers
     
-def test_merge():
+def test_merge( make_napari_viewer ):
     test_img = os.path.join(".", "test_data", "003_crop.tif")
     test_seg = os.path.join(".", "test_data", "003_crop_epyseg.tif")
-    viewer = napari.Viewer(show=False)
+    viewer = make_napari_viewer()
     epic = epi.EpiCure(viewer)
     epic.load_movie(test_img)
     epic.load_segmentation(test_seg)
@@ -55,10 +55,10 @@ def test_merge():
     assert val == 1296 
     
 
-def test_group():
+def test_group( make_napari_viewer ):
     test_img = os.path.join(".", "test_data", "003_crop.tif")
     test_seg = os.path.join(".", "test_data", "003_crop_epyseg.tif")
-    viewer = napari.Viewer(show=False)
+    viewer = make_napari_viewer()
     epic = epi.EpiCure(viewer)
     epic.load_movie(test_img)
     epic.go_epicure("test_epics", test_seg)
