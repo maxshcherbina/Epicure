@@ -550,7 +550,9 @@ class Inspecting(QWidget):
         features["score"] = np.array([0], dtype="uint8")
         pts = [pos]
         self.events = self.viewer.add_points( np.array(pts), properties=features, face_color="score", size = int( self.event_size.value() ), symbol="x", name="Events", scale=self.viewer.layers["Segmentation"].scale )
-        self.events.properties.flags.writeable = True
+        self.events.properties["label"].flags.writeable = True
+        self.events.properties["id"].flags.writeable = True
+        self.events.properties["score"].flags.writeable = True
         self.add_event_type(0, sid, featurename)
         self.events.refresh()
         self.update_nevents_display()
@@ -588,15 +590,15 @@ class Inspecting(QWidget):
             ind = len(self.events.data)
             sid = self.new_event_id()
             self.events.add(pos)
-            self.events.properties["label"].flags.writeable = True
-            self.events.properties["id"].flags.writeable = True
-            self.events.properties["score"].flags.writeable = True
+            #self.events.properties["label"].flags.writeable = True
+            #self.events.properties["id"].flags.writeable = True
+            #self.events.properties["score"].flags.writeable = True
             self.events.properties["label"][ind] = label
             self.events.properties["id"][ind] = sid
             self.events.properties["score"][ind] = 0
-            self.events.properties["label"].flags.writeable = False 
-            self.events.properties["id"].flags.writeable = False 
-            self.events.properties["score"].flags.writeable = False 
+            #self.events.properties["label"].flags.writeable = False 
+            #self.events.properties["id"].flags.writeable = False 
+            #self.events.properties["score"].flags.writeable = False 
             self.add_event_type(ind, sid, reason)
 
         self.events.symbol.flags.writeable = True
