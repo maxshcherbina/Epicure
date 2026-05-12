@@ -586,9 +586,15 @@ class Inspecting(QWidget):
             ind = len(self.events.data)
             sid = self.new_event_id()
             self.events.add(pos)
+            self.events.properties["label"].flags.writeable = True
+            self.events.properties["id"].flags.writeable = True
+            self.events.properties["score"].flags.writeable = True
             self.events.properties["label"][ind] = label
             self.events.properties["id"][ind] = sid
             self.events.properties["score"][ind] = 0
+            self.events.properties["label"].flags.writeable = False 
+            self.events.properties["id"].flags.writeable = False 
+            self.events.properties["score"].flags.writeable = False 
             self.add_event_type(ind, sid, reason)
 
         self.events.symbol.flags.writeable = True
