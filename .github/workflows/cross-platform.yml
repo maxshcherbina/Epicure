@@ -44,6 +44,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      # these libraries enable testing on Qt on linux
+      - uses: tlambert03/setup-qt-libs@v1
+
       - name: Install tox
         run: pip install tox tox-gh-actions
 
