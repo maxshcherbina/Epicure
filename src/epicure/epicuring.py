@@ -805,7 +805,7 @@ class EpiCure:
         infile = open(epiname, "rb")
         try:
             if ut.is_windows():  
-                epidata = pickle.load( infile, encoding="latin1" )
+                epidata = pickle.load( infile, encoding="utf8" )
             else:
                 epidata = pickle.load( infile )
             #print(epidata)
