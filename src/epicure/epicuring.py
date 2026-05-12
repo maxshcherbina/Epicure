@@ -818,9 +818,10 @@ class EpiCure:
                 self.load_epicure_data_old(epidata, infile)
         except Exception as e:
             if self.verbose > 1:
-                print(f"Line 619 - {type(e)} {e} - Could not read EpiCure data file {epiname}")
+                print(f" {type(e)} {e} - Could not read EpiCure data file {epiname}")
             else:
                 ut.show_warning(f"Could not read EpiCure data file {epiname}")
+                print(f" {type(e)} {e} - Could not read EpiCure data file {epiname}")
 
     def read_epidata(self, epidata):
         """Read the dict of saved state and initialize all instances with it"""
