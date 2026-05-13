@@ -7,11 +7,12 @@ import epicure.Utils as ut
 import napari
 
 
-def test_suspect_frame():
+def test_suspect_frame(make_napari_viewer):
     """ Flag possible errors on a single frame, looking at possible outliers """
     test_img = os.path.join(".", "test_data", "area3_Composite.tif")
     test_seg = os.path.join(".", "test_data", "area3_Composite_epyseg.tif")
-    epic = epi.EpiCure()
+    viewer = make_napari_viewer()
+    epic = epi.EpiCure(viewer)
     epic.load_movie(test_img)
     epic.set_chanel(1, 1)
     assert epic.viewer is not None
@@ -34,11 +35,11 @@ def test_suspect_frame():
     segedit.event_intensity(True)
     assert len(outlier.data) > (nsus+5)
 
-def test_events_division():
+def test_events_division(make_napari_viewer):
     """ Handling events: add/remove division event """
     test_img = os.path.join(".", "test_data", "013_crop.tif")
     ## load and initialize
-    viewer = napari.Viewer(show=False)
+    viewer = make_napari_viewer()
     epic = epi.EpiCure(viewer)
     epic.load_movie(test_img)
     epic.go_epicure("epics")
@@ -65,11 +66,11 @@ def test_events_division():
     ## check that parent found was the correct one (73)
     assert epic.tracking.graph[490] == [73]
 
-def test_events_extrusion():
+def test_events_extrusion(make_napari_viewer):
     """ Handling events: detect/remove extrusion event """
     test_img = os.path.join(".", "test_data", "013_crop.tif")
     ## load and initialize
-    viewer = napari.Viewer(show=False)
+    viewer = make_napari_viewer()
     epic = epi.EpiCure(viewer)
     epic.load_movie(test_img)
     epic.go_epicure("epics")
@@ -115,13 +116,14 @@ def test_events_extrusion():
     assert susp.is_division(ind)
 
 
-def test_suspect_track():
+def test_suspect_track(make_napari_viewer):
     """ Track and flag weird tracks """
     test_img = os.path.join(".", "test_data", "003_crop.tif")
     test_seg = os.path.join(".", "test_data", "003_crop_epyseg.tif")
 
     ## load and initialize
-    epic = epi.EpiCure()
+    viewer = make_napari_viewer()
+    epic = epi.EpiCure(viewer)
     epic.load_movie(test_img)
     epic.go_epicure("test_epics", test_seg)
     track = epic.tracking
@@ -163,13 +165,14 @@ def test_suspect_track():
     susp.inspect_tracks()
     assert susp.nb_events() > 50 
 
-def test_boundaries():
+def test_boundaries(make_napari_viewer):
     """ Detecting cells on border/boundaries and removing border cells """
     test_img = os.path.join(".", "test_data", "003_crop.tif")
     test_seg = os.path.join(".", "test_data", "003_crop_epyseg.tif")
 
     ## load and initialize
-    epic = epi.EpiCure()
+    viewer = make_napari_viewer()
+    epic = epi.EpiCure(viewer)
     epic.load_movie(test_img)
     epic.go_epicure("test_epics", test_seg)
 

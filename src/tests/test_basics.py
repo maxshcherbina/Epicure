@@ -6,19 +6,21 @@ import epicure.Utils as ut
 from epicure.start_epicuring import gui_files
 
 
-def test_load_movie():
+def test_load_movie( make_napari_viewer ):
     """ Read a standard tif movie """
     test_img = os.path.join(".", "test_data", "003_crop.tif")
-    epic = epi.EpiCure()
+    viewer = make_napari_viewer()
+    epic = epi.EpiCure(viewer)
     epic.load_movie(test_img)
     assert epic.img.shape == (11,189,212)
     return
 
-def test_load_image():
+def test_load_image( make_napari_viewer ):
     """ Read a single image and a cellpose (labels) segmentation """
     test_img = os.path.join(".", "test_data", "static_image.tif")
     test_seg = os.path.join(".", "test_data", "static_image_cellpose.tif")
-    epic = epi.EpiCure()
+    viewer = make_napari_viewer()
+    epic = epi.EpiCure(viewer)
     epic.load_movie(test_img)
     assert epic.img.shape == (1,507,585)
     epic.load_segmentation(test_seg)
@@ -26,11 +28,12 @@ def test_load_image():
     assert np.max(epic.seg) == 706
     return
 
-def test_load_movie_with_chanel():
+def test_load_movie_with_chanel( make_napari_viewer ):
     """ Read a tif movie with 2 channels """
     test_img = os.path.join(".", "test_data", "area3_Composite.tif")
     test_seg = os.path.join(".", "test_data", "area3_Composite_epyseg.tif")
-    epic = epi.EpiCure()
+    viewer = make_napari_viewer()
+    epic = epi.EpiCure( viewer )
     resaxis, resval = epic.load_movie(test_img)
     # check the dimensions are correctly loaded
     assert epic.img.shape == (5,2,146,228)
@@ -43,19 +46,21 @@ def test_load_movie_with_chanel():
     assert np.mean(epic.img)>100
     return
 
-def test_load_segmentation():
+def test_load_segmentation( make_napari_viewer ):
     test_seg = os.path.join(".", "test_data", "003_crop_epyseg.tif")
-    epic = epi.EpiCure()
+    viewer = make_napari_viewer()
+    epic = epi.EpiCure( viewer )
     epic.load_segmentation(test_seg)
     assert epic.seg.shape == (11,189,212)
     assert np.max(epic.seg) == 1294
     return
 
-def test_suggest():
+def test_suggest( make_napari_viewer ):
     """ Check segmentation file name suggestion """
     ## case 1: file doesn't exists, creates it
     test_img = os.path.join(".", "test_data", "003_crop.tif")
-    epic = epi.EpiCure()
+    viewer = make_napari_viewer()
+    epic = epi.EpiCure(viewer)
     epic.load_movie(test_img)
     segfile = epic.suggest_segfile("epics")
     assert segfile is None
@@ -68,14 +73,15 @@ def test_suggest():
     assert segfile == absp 
     return
 
-def test_init_epic():
-    epic = epi.EpiCure()
+def test_init_epic( make_napari_viewer ):
+    viewer = make_napari_viewer()
+    epic = epi.EpiCure(viewer)
     assert epic.img is None
     return
 
-def test_load_from_layers():
+def test_load_from_layers( make_napari_viewer ):
     """ Open a new EpiCure project from opened layers """
-    viewer = napari.Viewer(show=False)
+    viewer = make_napari_viewer()
     test_img = os.path.join(".", "test_data", "003_crop.tif")
     img, _, _, _, _, _ = ut.open_image(test_img, get_metadata=False, verbose=0)
     movie_layer = viewer.add_image(img, name="TestImage")
@@ -104,6 +110,7 @@ def test_load_from_layers():
     #viewer.show() # manual check
     
 if __name__ == "__main__":
+    test_load_movie()
     test_load_from_layers()
     test_load_image()
     print("********* Test basics completed ***********")

@@ -6,14 +6,15 @@ Corresponding code in src/epicure/trackmate_export.py
 import epicure.epicuring as epicure
 import os
 
-def test_export_trackmate():
+def test_export_trackmate(make_napari_viewer):
     """ Export tracks as a TrackMate XML file """
     raw_path = os.path.join( ".", "test_data", "013_crop.tif" )
     xml_path = os.path.join(".", "test_data", "epics", "013_crop.xml")
     if os.path.exists(xml_path):
         os.remove(xml_path)
 
-    epic = epicure.EpiCure()
+    viewer = make_napari_viewer()
+    epic = epicure.EpiCure(viewer)
     epic.verbose = 3  # 0: minimal to 3: debug informations
     epic.load_movie(raw_path)
     epic.go_epicure(outdir="epics")
@@ -117,12 +118,13 @@ def test_tm_loader_trackmate():
         contain_expected = [exp_name for exp_name, exp_ids in expected_tracklets.items() if set(exp_ids).issubset(obt_set)]
         assert len(contain_expected) <= 1, f"Obtained tracklet with label {obt_label} contains IDs from multiple expected tracklets: {contain_expected}. IDs: {obt_ids}"
 
-def test_import_trackmate():
+def test_import_trackmate(make_napari_viewer):
     """ Test import a Trackmate .xml tracks into EpiCure structure """
     raw_path = os.path.join( ".", "test_data", "013_crop.tif" )
     xml_path = os.path.join(".", "test_data", "epics", "013_crop.xml")
 
-    epic = epicure.EpiCure()
+    viewer = make_napari_viewer()
+    epic = epicure.EpiCure(viewer)
     epic.verbose = 3  # 0: minimal to 3: debug informations
     epic.load_movie(raw_path)
     epic.go_epicure("epics", xml_path)

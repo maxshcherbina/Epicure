@@ -53,6 +53,15 @@ pyqt5 = [
 	"PyQtWebEngine",
 ]
 
+testing = [
+    "tox",
+    "pytest",
+    "pytest-cov",
+    "pytest-qt",
+    "napari",
+    "pyqt5",
+]
+
 [project.urls]
 "Bug Tracker" = "https://github.com/Image-Analysis-Hub/Epicure/issues"
 "Documentation" = "https://image-analysis-hub.github.io/Epicure/"

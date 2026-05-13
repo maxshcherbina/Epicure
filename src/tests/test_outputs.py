@@ -7,11 +7,11 @@ import epicure.Utils as ut
 import napari
 
 
-def test_output_selected():
+def test_output_selected( make_napari_viewer ):
     """ Selection of cells to export segmentation as ROI/labels """
     test_img = os.path.join(".", "test_data", "area3_Composite.tif")
     test_seg = os.path.join(".", "test_data", "area3_Composite_epyseg.tif")
-    viewer = napari.Viewer(show=False)
+    viewer = make_napari_viewer()
     epic = epi.EpiCure(viewer)
     resaxis, resval = epic.load_movie(test_img)
     epic.set_chanel(1, 1)
@@ -35,12 +35,12 @@ def test_output_selected():
     output.save_segmentation()
     assert os.path.exists(roi_file)
     
-def test_measure_vertices():
+def test_measure_vertices( make_napari_viewer ):
     """ Find the vertices (TCJ) and measure their intensity and nb of neighbors """
 
     test_img = os.path.join(".", "test_data", "area3_Composite.tif")
     test_seg = os.path.join(".", "test_data", "area3_Composite_epyseg.tif")
-    viewer = napari.Viewer(show=False)
+    viewer = make_napari_viewer()
     epic = epi.EpiCure(viewer)
     resaxis, resval = epic.load_movie(test_img)
     epic.set_chanel(1, 1)
@@ -74,12 +74,12 @@ def test_measure_vertices():
     assert len(props)>100
     assert len(props)<nvertex
 
-def test_measure_intensities():
+def test_measure_intensities(make_napari_viewer ):
     """ Test measure of cell features, in particular intensity measurement """
 
     test_img = os.path.join(".", "test_data", "area3_Composite.tif")
     test_seg = os.path.join(".", "test_data", "area3_Composite_epyseg.tif")
-    viewer = napari.Viewer(show=False)
+    viewer = make_napari_viewer()
     epic = epi.EpiCure(viewer)
     resaxis, resval = epic.load_movie(test_img)
     epic.set_chanel(1, 1)
@@ -116,10 +116,10 @@ def test_measure_intensities():
     assert "intensity_mean" in output.table.keys()
     assert "intensity_mean_MovieChannel_1" not in output.table.keys()
 
-def test_measure_events():
+def test_measure_events(make_napari_viewer ):
     """ Measure/export of events """
     test_img = os.path.join(".", "test_data", "013_crop.tif")
-    viewer = napari.Viewer(show=False)
+    viewer = make_napari_viewer()
     epic = epi.EpiCure(viewer)
     epic.load_movie(test_img)
     epic.go_epicure("epics")

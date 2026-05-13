@@ -1094,6 +1094,7 @@ def get_border_cells( img ):
     labels += list( np.unique( img[ :, (height-2): ] ) )   ## bottom border
     labels += list( np.unique( img[ 0:2,] ) )   ## left border
     labels += list( np.unique( img[ (width-2):,] ) )   ## right border
+    labels = list( np.unique(labels) )
     return labels
 
 def count_neighbors( label_img, label ):
@@ -1174,6 +1175,13 @@ def shortcut_click_match( shortcut, event ):
         if len(event.modifiers) > 0:
             return False
         return True
+
+def is_windows():
+    """ Is running on windows or not """
+    try:
+        return platform.lower().startswith("win")
+    except:
+        return False
 
 def is_darwin():
     """ Test if OS is MacOS or not """
