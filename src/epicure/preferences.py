@@ -61,7 +61,7 @@ class Preferences():
     def __init__( self ):
         """ Initialise file path, load current preferences"""
         self.build_preferences_path()
-        print("Running on "+platform.lower())
+        #print("Running on "+platform.lower())
         
         self.ctl = "Control"
         self.alt = "Alt"
