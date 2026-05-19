@@ -41,7 +41,7 @@ When you have selected the two files, you can start editing by clicking on the `
 
 * [Edit](.//Edit.md): clean the segmentation or correct manually errors through EpiCure options :wrench: 
 * [Inspect](./Inspect.md): determine cells suspicious of having an error, based on a few morphological or track features, or handle cellular events as divisions :mag: 
-* [Track](./Track/md): links the labels from one frame to another to reconstruct the whole cell track. 
+* [Track](./Track.md): links the labels from one frame to another to reconstruct the whole cell track. 
 * [Output](./Output.md): measure/display cell or track features, export results to other plugins/softwares :outbox_tray: 
 * [Display](./Display.md): display additional informations (segmentation skeleton, general informations...) or a spatial grid :window:  
 * [Preferences](./Preferences.md): to set-up user-specific preferences as keyboard shortcuts :capital_abcd: 

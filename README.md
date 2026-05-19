@@ -67,6 +67,16 @@ To suggest the addition of a new feature, you can also contact us by filing an i
 If you encounter a code related issue using EpiCure, please [file an issue](https://github.com/Image-Analysis-Hub/epicure/issues) in this repository.
 
 
+To facilitate contributions, we added a pixi file in the repository.
+Developers can run:
+* `pixi run build` to install locally the plugin and test it manually
+* `pixi run test` to run locally the tests from the `src/tests` directory
+* `pixi run build-doc` to locally build the documentation pages. The documentation will be build in the `site` folder in the repository. The file `site\index.html` can be open in a browser to see the generated documentation. 
+
+The code API can be found [here](https://image-analysis-hub.github.io/Epicure/api/epicure.html) in the online documentation.
+Examples of using EpiCure without opening the interface can be found in the test files and the repository notebooks.
+
+
 [napari]: https://github.com/napari/napari
 [file an issue]: https://github.com/Image-Analysis-Hub/epicure/issues
 [pip]: https://pypi.org/project/pip/
