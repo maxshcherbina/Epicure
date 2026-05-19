@@ -20,9 +20,19 @@ def start_from_layers():
     from typing import Union
     hist = get_save_history()
     cdir = hist[0]
+    
+    def show_doc():
+        """ Open the online documentation """
+        ut.show_documentation_page( "Start-epicure#start-from-opened-layers" )
 
-    @magicgui(call_button="Use selected layers",)
-    def select_layer(movie: Union["napari.layers.Image", None], movie_path: pathlib.Path, segmentation: Union["napari.layers.Layer", None]):
+    @magicgui(call_button="Use selected layers",
+            __ = {"widget_type": "Label"},
+            go_help = {"widget_type": "PushButton", "label": "Help"},
+            )
+    def select_layer(movie: Union["napari.layers.Image", None], movie_path: pathlib.Path, 
+                     segmentation: Union["napari.layers.Layer", None], 
+                    __ ="",
+                     go_help=False):
         """ GUI to choose the layers to use """
         if movie == "None":
             movie = None
@@ -37,7 +47,9 @@ def start_from_layers():
 
     viewer = current_viewer()
     wid = viewer.window.add_dock_widget(select_layer)
+    select_layer.go_help.clicked.connect( show_doc )
     return wid
+    
 
 
 def start_epicure():
@@ -156,6 +168,10 @@ def gui_files(movie=None, movie_path="", segmented=None):
         show_others()
         ut.show_duration(start_time, header="Movie chanel loaded in ")
 
+    def show_documentation():
+        """ Open the online documentation """
+        ut.show_documentation_page( "Start-epicure" )
+
     def launch_napari_epyseg():
         """ Open napari-epyseg plugin to segment the intensity channel movie """
         print("Running EpySeg with default parameters on the movie. To change the settings, use the napari-epyseg plugin outside of EpiCure or EpySeg module directly")
@@ -207,6 +223,7 @@ def gui_files(movie=None, movie_path="", segmented=None):
             junction_half_thickness={"widget_type": "LiteralEvalLineEdit"},
             nbparallel_threads = {"widget_type": "LiteralEvalLineEdit"},
             verbose_level={"widget_type": "Slider", "min":0, "max": 3},
+            go_help = {"widget_type": "PushButton", "label": "Help"},
             )
     def get_files( 
                    image_file = pathlib.Path(cdir),
@@ -219,9 +236,9 @@ def gui_files(movie=None, movie_path="", segmented=None):
                    __ = "\nSegmentation\n",
                    _____ = "Load segmentation or TrackMateXML file",
                    segmentation_file = pathlib.Path(cdir),
-                   ______ = "OR\t",
+                   ______ = "OR\t\t",
                    segment_with_epyseg = False,
-                   ___ = "",
+                   ___ = "\n",
                    advanced_parameters = False,
                    show_other_chanels = True,
                    show_scale_bar = True,
@@ -232,6 +249,7 @@ def gui_files(movie=None, movie_path="", segmented=None):
                    junction_half_thickness = 1,
                    output_dirname = "epics",
                    verbose_level = 1,
+                   go_help = False,
                    ):
 
         print("Starting")
@@ -276,5 +294,6 @@ def gui_files(movie=None, movie_path="", segmented=None):
     get_files.image_file.changed.connect(load_movie)
     get_files.junction_chanel.changed.connect(set_chanel)
     get_files.segment_with_epyseg.clicked.connect( launch_napari_epyseg )
+    get_files.go_help.clicked.connect( show_documentation )
     return get_files, Epic
 
