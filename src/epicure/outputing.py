@@ -9,6 +9,7 @@ from napari.utils import progress
 import epicure.Utils as ut
 import epicure.epiwidgets as wid
 from epicure.trackmate_export import save_trackmate_xml
+from epicure.geff_export import save_geff
 import plotly.express as px
 from qtpy import QtCore
 from qtpy.QtCore import Qt
@@ -31,7 +32,7 @@ class Outputing(QWidget):
         self.seglayer = self.viewer.layers["Segmentation"]
         self.movlayer = self.viewer.layers["Movie"]
         self.selection_choices = ["All cells", "Only selected cell"]
-        self.output_options = ["", "Export to extern plugins", "Export segmentations", "Measure cell features", "Measure track features", "Export/Measure events", "Save as TrackMate XML", "Save screenshot movie", "Measure vertices"]
+        self.output_options = ["", "Export to extern plugins", "Export segmentations", "Measure cell features", "Measure track features", "Export/Measure events", "Save as...", "Save screenshot movie", "Measure vertices"]
         self.tplots = None
         
         chanlist = ["Movie"]
@@ -141,13 +142,15 @@ class Outputing(QWidget):
         all_layout.addWidget( self.handle_event_group )
 
         ## Save TrackMate XML option
-        self.save_tm_group, save_tm_layout = wid.group_layout( "Save as TrackMate XML" )
+        self.save_as_group, save_as_layout = wid.group_layout( "Save as..." )
         self.save_tm_btn = wid.add_button( "Save as TrackMate XML", self.save_tm_xml, "Save the current segmentation and the optional tracking in a TrackMate XML file" )
-        save_tm_layout.addWidget( self.save_tm_btn )
+        self.save_geff_btn = wid.add_button( "Save as GEFF", self.save_geff, "Save the segmentation and tracks to GEFF" )
+        save_as_layout.addWidget( self.save_tm_btn )
+        save_as_layout.addWidget( self.save_geff_btn )
         
-        self.save_tm_group.setLayout( save_tm_layout )
-        self.save_tm_group.hide()
-        all_layout.addWidget( self.save_tm_group )
+        self.save_as_group.setLayout( save_as_layout )
+        self.save_as_group.hide()
+        all_layout.addWidget( self.save_as_group )
        
         ## Save screenshots option
         current_frame = ut.current_frame( self.epicure.viewer )
@@ -245,7 +248,7 @@ class Outputing(QWidget):
         self.vertex_group.setVisible( cur_option == "Measure vertices" )
         self.trackfeat_group.setVisible( cur_option == "Measure track features" )
         self.handle_event_group.setVisible( cur_option == "Export/Measure events" )
-        self.save_tm_group.setVisible( cur_option == "Save as TrackMate XML" )
+        self.save_as_group.setVisible( cur_option == "Save as..." )
         self.screenshot_group.setVisible( cur_option == "Save screenshot movie" )
 
     def get_current_labels( self ):
@@ -1181,6 +1184,13 @@ class Outputing(QWidget):
         save_trackmate_xml( self.epicure, outname )
         if self.epicure.verbose > 0:
             ut.show_info("TrackMate XML saved in "+outname)
+    
+    def save_geff( self ):
+        """ Save current segmentation and tracking in GEFF format """
+        outname = os.path.join( self.epicure.outdir, self.epicure.imgname+".geff" )
+        save_geff( self.epicure, outname )
+        if self.epicure.verbose > 0:
+            ut.show_info("GEFF file saved in "+outname)
 
 
 class CellFeatures(QWidget):
