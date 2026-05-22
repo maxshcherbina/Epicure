@@ -5,6 +5,7 @@ import geff_spec
 import networkx as nx
 import numpy as np
 import pandas as pd
+import os
 from scipy.cluster.hierarchy import DisjointSet
 
 # @gaelle:
@@ -148,39 +149,36 @@ def build_nx_digraph(epic) -> nx.DiGraph:
 
 def build_props_metadata() -> Dict[str, geff_spec.PropMetadata]:
     """Build GEFF properties metadata."""
-    # TODO @gaelle:
-    # - change the dtype to what you think is best (numpy format dtype)
-    # - modify the name/description as you see fit, or you can delete these fields since they are optional
     md_x = geff_spec.PropMetadata(
         identifier="x",
-        dtype="float64",
+        dtype="int",
         varlength=False,
         unit="pixel",
         name="x",
-        description="X coordinate of the node",
+        description="X coordinate of center of the cell",
     )
     md_y = geff_spec.PropMetadata(
         identifier="y",
-        dtype="float64",
+        dtype="int",
         varlength=False,
         unit="pixel",
         name="y",
-        description="Y coordinate of the node",
+        description="Y coordinate of the center of the cell",
     )
     md_t = geff_spec.PropMetadata(
         identifier="t",
-        dtype="int64",
+        dtype="int32",
         varlength=False,
         unit="frame",
         name="t",
-        description="Time coordinate of the node",
+        description="Time",
     )
     md_label = geff_spec.PropMetadata(
         identifier="label",
         dtype="int64",
         varlength=False,
         name="label",
-        description="Label of the node",
+        description="Label of the cell",
     )
     md_nid = geff_spec.PropMetadata(
         identifier="node_id",
@@ -233,7 +231,7 @@ def build_geff_metadata(epic):
         related_objects=[
             geff_spec.RelatedObject(
                 type="labels",
-                path="../labels.tiff",  # TODO
+                path=os.path.join("..", epic.imgname+"_labels.tif"),
                 label_prop="label",
             ),
         ],
