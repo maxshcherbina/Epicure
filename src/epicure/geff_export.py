@@ -53,7 +53,7 @@ def build_nodes_df(
     track_data: np.ndarray, divisions: Dict[int, List[int]]
 ) -> pd.DataFrame:
     """Build a DataFrame representing the nodes for the GEFF graph."""
-    df = pd.DataFrame(track_data, columns=["label", "frame", "x", "y"])
+    df = pd.DataFrame(track_data, columns=["label", "frame", "y", "x"])
     df["node_id"] = df.index
 
     # Generate and assign track IDs.
