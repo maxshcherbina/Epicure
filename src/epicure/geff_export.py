@@ -8,9 +8,6 @@ import pandas as pd
 import os
 from scipy.cluster.hierarchy import DisjointSet
 
-# @gaelle:
-# - do you want to store features like centroid, area...?
-
 
 def create_label_to_track_mapping(
     divisions: Dict[int, List[int]], unique_labels: List[int]
