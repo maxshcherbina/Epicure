@@ -43,7 +43,6 @@ dependencies = [
     "laptrack>=0.15.0",
     "joblib",
 	"geff",
-	"geff_spec",
 ]
 
 [project.urls]
