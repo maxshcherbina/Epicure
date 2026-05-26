@@ -8,6 +8,8 @@ import pandas as pd
 import os
 from scipy.cluster.hierarchy import DisjointSet
 
+import epicure.Utils as ut
+
 # @gaelle:
 # - do you want to store features like centroid, area...?
 
@@ -66,10 +68,12 @@ def build_nodes_df(
 
 def build_edges_df(divisions: Dict[int, List[int]], df_nodes: pd.DataFrame):
     """"""
-    print(f"Divisions: {divisions}")
-    for mothers in divisions.values():
-        if len(mothers) > 1:
-            print("FUSION")
+    if divisions is not None:
+        for daughter, mothers in divisions.items():
+            if len(mothers) > 1:
+                ut.show_error(f"Merge event detected. Label {daughter} "
+                              f"has the following mother labels: {mothers}.")
+    # TODO: does GEFF support merge events?
 
     # Division edges: for each daughter-mother pair, create an edge.
     edges_data = [
