@@ -163,11 +163,11 @@ def build_props_metadata() -> Dict[str, geff_spec.PropMetadata]:
         description="Y coordinate of the center of the cell",
     )
     md_t = geff_spec.PropMetadata(
-        identifier="t",
+        identifier="frame",
         dtype="int32",
         varlength=False,
         unit="frame",
-        name="t",
+        name="frame",
         description="Time",
     )
     md_label = geff_spec.PropMetadata(
@@ -185,38 +185,38 @@ def build_props_metadata() -> Dict[str, geff_spec.PropMetadata]:
         description="Unique identifier of the node",
     )
 
-    return {"x": md_x, "y": md_y, "t": md_t, "label": md_label, "node_id": md_nid}
+    return {"x": md_x, "y": md_y, "frame": md_t, "label": md_label, "node_id": md_nid}
 
 
 def build_geff_metadata(epic):
     """Build GEFF metadata."""
-    axes = geff_spec.Axes(
-        horizontal=geff_spec.Axis(
+    axes = [
+        geff_spec.Axis(
             name="x",
             type="space",
             unit="pixel",
             scale=epic.epi_metadata.get("ScaleXY", 1),
             scaled_unit=epic.epi_metadata.get("UnitXY"),
         ),
-        vertical=geff_spec.Axis(
+        geff_spec.Axis(
             name="y",
             type="space",
             unit="pixel",
             scale=epic.epi_metadata.get("ScaleXY", 1),
             scaled_unit=epic.epi_metadata.get("UnitXY"),
         ),
-        time=geff_spec.Axis(
-            name="t",
+        geff_spec.Axis(
+            name="frame",
             type="time",
             unit="frame",
             scale=epic.epi_metadata.get("ScaleT", 1),
             scaled_unit=epic.epi_metadata.get("UnitT"),
         ),
-    )
+    ]
     display_hints = geff_spec.DisplayHint(
         display_horizontal="x",
         display_vertical="y",
-        display_time="t",
+        display_time="frame",
     )
 
     return geff.GeffMetadata(
@@ -224,11 +224,12 @@ def build_geff_metadata(epic):
         axes=axes,
         display_hints=display_hints,
         node_props_metadata=build_props_metadata(),
+        edge_props_metadata={},
         track_node_props={"lineage": "track_id", "tracklet": "label"},
         related_objects=[
             geff_spec.RelatedObject(
                 type="labels",
-                path=os.path.join("..", epic.imgname+"_labels.tif"),
+                path=os.path.join("..", epic.imgname + "_labels.tif"),
                 label_prop="label",
             ),
         ],
