@@ -1,7 +1,4 @@
-from pathlib import Path
-
 import geff
-import geff_spec
 import networkx as nx
 import numpy as np
 from zarr.storage import StoreLike
@@ -293,12 +290,74 @@ def _build_tracks_dict(geff_graph: nx.DiGraph, label_key: str) -> dict[int, list
     return tracks
 
 
-def import_geff(geff_path: StoreLike):
-    """Import a GEFF file."""
+def _get_metadata(
+    metadata: geff.GeffMetadata, time_key: str, x_key: str, y_key: str
+) -> dict[str, str]:
+    """
+    Extract metadata from GEFF metadata object.
+
+    Args:
+        metadata (geff.GeffMetadata): The GEFF metadata.
+        time_key (str): The key for the time/frame attribute.
+        x_key (str): The key for the x coordinate attribute.
+        y_key (str): The key for the y coordinate attribute.
+
+    Returns:
+        dict[str, str]: A dictionary of metadata key-value pairs.
+    """
+    md = {}
+    x_axis = None
+    y_axis = None
+    if metadata.axes is not None:
+        for axis in metadata.axes:
+            if axis.name == time_key:
+                md["UnitT"] = axis.unit
+                md["ScaleT"] = axis.scale
+                md["ScaledUnitT"] = axis.scaled_unit
+            elif axis.name == x_key:
+                x_axis = axis
+            elif axis.name == y_key:
+                y_axis = axis
+
+    if x_axis is not None and y_axis is not None:
+        if x_axis.unit == y_axis.unit:
+            md["UnitXY"] = x_axis.unit
+        else:
+            ut.show_warning(
+                f"Different units for x and y axes: '{x_axis.unit}' and '{y_axis.unit}'. "
+                "UnitXY metadata will not be set."
+            )
+        if x_axis.scale == y_axis.scale:
+            md["ScaleXY"] = x_axis.scale
+        else:
+            ut.show_warning(
+                f"Different scales for x and y axes: '{x_axis.scale}' and '{y_axis.scale}'. "
+                "ScaleXY metadata will not be set."
+            )
+        if x_axis.scaled_unit == y_axis.scaled_unit:
+            md["ScaledUnitXY"] = x_axis.scaled_unit
+
+    return md
+
+
+def import_geff(
+    geff_path: StoreLike,
+) -> tuple[dict[str, str], np.ndarray, dict[int, list[int]]]:
+    """
+    Import a GEFF file.
+
+    Args:
+        geff_path (StoreLike): The path to the GEFF file to import.
+
+    Returns:
+        tuple[dict[str, str], np.ndarray, dict[int, list[int]]]: A tuple containing:
+            - A dictionary of metadata key-value pairs.
+            - A positions array with columns [label, time, y, x].
+            - A tracks dictionary mapping each daughter label to a list of its mother labels.
+    """
     geff_graph, geff_md = geff.read(geff_path, structure_validation=True)
 
     _check_preconditions(geff_graph, geff_md)
-    units: dict[str, str] = {}
 
     label_key = _identify_prop(geff_md, geff_graph, "label")
     if label_key is None:
@@ -329,4 +388,9 @@ def import_geff(geff_path: StoreLike):
     positions = _build_positions_array(geff_graph, label_key, time_key, x_key, y_key)
     tracks = _build_tracks_dict(geff_graph, label_key)
 
-    return units, positions, tracks
+    if geff_md is not None:
+        metadata = _get_metadata(geff_md, time_key, x_key, y_key)
+    else:
+        metadata = {}
+
+    return positions, tracks, metadata
