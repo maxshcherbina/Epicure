@@ -6,6 +6,31 @@ import numpy as np
 import epicure.Utils as ut
 
 
+def _check_preconditions(graph: nx.DiGraph, metadata: geff.GeffMetadata | None) -> None:
+    """
+    Check that the graph meets the preconditions for import: directed graph and no merging cells.
+
+    Args:
+        graph (nx.DiGraph): The GEFF graph to check.
+        metadata (geff.GeffMetadata | None): The GEFF metadata.
+    """
+
+    if metadata is None:
+        if not isinstance(graph, nx.DiGraph):
+            ut.show_error(f"The GEFF graph must be directed. Found type: {type(graph)}.")
+    else:
+        if not metadata.directed:
+            ut.show_error(
+                "The GEFF graph must be directed. Metadata indicates an undirected graph."
+            )
+
+    fusions = [n for n in graph.nodes() if graph.in_degree(n) > 1]
+    if len(fusions) > 0:
+        ut.show_warning(
+            f"Merging cells detected (nodes: {fusions}). EpiCure behavior may be affected."
+        )
+
+
 def _identify_prop(
     geff_md: geff.GeffMetadata | None,
     geff_graph: nx.DiGraph,
@@ -202,6 +227,8 @@ def _generate_label(geff_graph: nx.DiGraph) -> None:
 def import_geff(geff_path: str):
     """Import a GEFF file."""
     geff_graph, geff_md = geff.read(geff_path, structure_validation=True)
+
+    _check_preconditions(geff_graph, geff_md)
 
     time_key = _identify_prop(geff_md, geff_graph, "frame")
     label_key = _identify_prop(geff_md, geff_graph, "label")
