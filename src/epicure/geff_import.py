@@ -1,17 +1,20 @@
+from pathlib import Path
+
 import geff
 import geff_spec
 import networkx as nx
 import numpy as np
+from zarr.storage import StoreLike
 
 import epicure.Utils as ut
 
 
-def _check_preconditions(graph: nx.DiGraph, metadata: geff.GeffMetadata | None) -> None:
+def _check_preconditions(graph: nx.Graph, metadata: geff.GeffMetadata | None) -> None:
     """
     Check that the graph meets the preconditions for import: directed graph and no merging cells.
 
     Args:
-        graph (nx.DiGraph): The GEFF graph to check.
+        graph (nx.Graph): The GEFF graph to check.
         metadata (geff.GeffMetadata | None): The GEFF metadata.
     """
 
@@ -24,6 +27,9 @@ def _check_preconditions(graph: nx.DiGraph, metadata: geff.GeffMetadata | None) 
                 "The GEFF graph must be directed. Metadata indicates an undirected graph."
             )
 
+    assert isinstance(graph, nx.DiGraph), (
+        f"The GEFF graph must be directed. Found type: {type(graph)}."
+    )
     fusions = [n for n in graph.nodes() if graph.in_degree(n) > 1]
     if len(fusions) > 0:
         ut.show_warning(
@@ -66,7 +72,7 @@ def _identify_prop(
 def _identify_time_axis(
     geff_md: geff.GeffMetadata | None,
     geff_graph: nx.DiGraph,
-) -> str | None:
+) -> str:
     """
     Identify the time axis from GEFF metadata.
 
@@ -80,7 +86,7 @@ def _identify_time_axis(
         geff_graph (nx.DiGraph): The GEFF graph.
 
     Returns:
-        str | None: The identified time axis.
+        str: The identified time axis.
     """
     # Check for time in display hints.
     time_key = None
@@ -115,8 +121,8 @@ def _identify_time_axis(
 
     if time_key is None:
         ut.show_error(
-            "No valid time axis found. Please provide a valid axis argument "
-            "or ensure that the GEFF file contains a time axis or a time display hint."
+            "No valid time axis found. Please ensure that the GEFF file contains "
+            "a time axis or a time display hint."
         )
 
     return time_key
@@ -125,7 +131,7 @@ def _identify_time_axis(
 def _identify_space_axes(
     geff_md: geff.GeffMetadata | None,
     geff_graph: nx.DiGraph,
-) -> tuple[str | None, str | None]:
+) -> tuple[str, str]:
     """
     Identify the space axes (x, y) from GEFF metadata.
 
@@ -137,7 +143,7 @@ def _identify_space_axes(
         geff_graph (nx.DiGraph): The GEFF graph.
 
     Returns:
-        tuple[str | None, str | None]: The identified space axes.
+        tuple[str, str]: The identified space axes.
     """
     space_keys = [None, None]
 
@@ -176,6 +182,12 @@ def _identify_space_axes(
                         )
                         break
 
+    if space_keys[0] is None or space_keys[1] is None:
+        ut.show_error(
+            "No valid space axes found. Please ensure that the GEFF file contains "
+            "space axes or space display hints."
+        )
+
     return space_keys[0], space_keys[1]
 
 
@@ -186,6 +198,9 @@ def _generate_label(geff_graph: nx.DiGraph) -> None:
 
     Args:
         geff_graph (nx.DiGraph): The graph to label. Modified in-place.
+
+    Modifies:
+        geff_graph (nx.DiGraph): Adds a 'label' attribute to each node.
     """
     labeled_nodes = set()
     label_counter = 0
@@ -224,29 +239,94 @@ def _generate_label(geff_graph: nx.DiGraph) -> None:
         label_counter += 1
 
 
-def import_geff(geff_path: str):
+def _build_positions_array(
+    geff_graph: nx.DiGraph,
+    label_key: str,
+    time_key: str,
+    x_key: str,
+    y_key: str,
+) -> np.ndarray:
+    """
+    Build the positions array from the GEFF graph.
+
+    Args:
+        geff_graph (nx.DiGraph): The GEFF graph containing the nodes with their attributes.
+        label_key (str): The key for the label attribute in the graph nodes.
+        time_key (str): The key for the time/frame attribute in the graph nodes.
+        x_key (str): The key for the x coordinate attribute in the graph nodes.
+        y_key (str): The key for the y coordinate attribute in the graph nodes.
+
+    Returns:
+        np.ndarray: The filled positions array with columns [label, time, y, x].
+    """
+    positions = np.empty((len(geff_graph), 4), dtype=np.float32)
+    for i, node in enumerate(geff_graph.nodes()):
+        node_data = geff_graph.nodes[node]
+        positions[i, 0] = node_data[label_key]
+        positions[i, 1] = node_data[time_key]
+        positions[i, 2] = node_data[y_key]
+        positions[i, 3] = node_data[x_key]
+    # TODO @Gaëlle: do we need to sort the positions by time? by label?
+    return positions
+
+
+def _build_tracks_dict(geff_graph: nx.DiGraph, label_key: str) -> dict[int, list[int]]:
+    """
+    Build the tracks dictionary from the GEFF graph ({daughter_label: [mother_labels]}).
+
+    Args:
+        geff_graph (nx.DiGraph): The GEFF graph containing the nodes and edges.
+        label_key (str): The key for the label attribute in the graph nodes.
+
+    Returns:
+        dict[int, list[int]]: A dictionary mapping each daughter label to a list of its mother labels.
+    """
+    tracks: dict[int, list[int]] = {}
+    divisions = [n for n in geff_graph.nodes() if geff_graph.out_degree(n) > 1]
+    for div in divisions:
+        for daughter in geff_graph.successors(div):
+            mother_label = geff_graph.nodes[div][label_key]
+            daughter_label = geff_graph.nodes[daughter][label_key]
+            if daughter_label not in tracks:
+                tracks[daughter_label] = []
+            tracks[daughter_label].append(mother_label)
+    return tracks
+
+
+def import_geff(geff_path: StoreLike):
     """Import a GEFF file."""
     geff_graph, geff_md = geff.read(geff_path, structure_validation=True)
 
     _check_preconditions(geff_graph, geff_md)
+    units: dict[str, str] = {}
+
+    label_key = _identify_prop(geff_md, geff_graph, "label")
+    if label_key is None:
+        label_key = "label"
+        _generate_label(geff_graph)
+        ut.show_debug("Node labels generated and assigned to 'label'.")
+    else:
+        ut.show_debug(f"Identified label key: '{label_key}'.")
 
     time_key = _identify_prop(geff_md, geff_graph, "frame")
-    label_key = _identify_prop(geff_md, geff_graph, "label")
-
     if time_key is None:
         ut.show_debug(
             "No frame-like property identified in GEFF metadata. "
             "Attempting to identify time axis from display hints or axes.",
         )
         time_key = _identify_time_axis(geff_md, geff_graph)
+
+    x_key = _identify_prop(geff_md, geff_graph, "x")
+    y_key = _identify_prop(geff_md, geff_graph, "y")
+    if x_key is None or y_key is None:
+        ut.show_debug(
+            "No x/y properties identified in GEFF metadata. "
+            "Attempting to identify space axes from display hints or axes.",
+        )
     x_key, y_key = _identify_space_axes(geff_md, geff_graph)
     ut.show_debug(f"Identified axes: '{time_key}', x: '{x_key}', y: '{y_key}'.")
 
-    units: dict[str, str] = {}
-    positions: np.ndarray = np.empty((len(geff_graph), 4), dtype=np.float32)
-    tracks: dict[int, list[int]] = {}
+    positions = _build_positions_array(geff_graph, label_key, time_key, x_key, y_key)
+    tracks = _build_tracks_dict(geff_graph, label_key)
 
-    if label_key is None:
-        _generate_label(geff_graph)
-
-    return geff_graph, geff_md
+    return units, positions, tracks
