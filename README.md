@@ -56,6 +56,10 @@ If you use EpiCure, thank you for citing our work:
 
 EpiCure is not published yet, you can cite it using Zenodo for now: https://doi.org/10.5281/zenodo.13952184
 
+### Dataset
+
+The dataset presented in our main EpiCure publication is available on zenodo: [10.5281/zenodo.20607705](10.5281/zenodo.20607705). 
+
 ## Contributing and Feedback
 EpiCure is mainly developed in CNRS UMR3738, in the [Developmental and Stem Cell Biology Department](https://research.pasteur.fr/en/department/developmental-stem-cell-biology/) of Institut Pasteur.
 If you have a question on using EpiCure or ask to add a feature, either file an issue or write in the [imagesc forum](https://forum.image.sc/).
