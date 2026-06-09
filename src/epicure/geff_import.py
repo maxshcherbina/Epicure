@@ -7,9 +7,9 @@ import epicure.Utils as ut
 
 
 def _identify_prop(
-        geff_md: geff.GeffMetadata | None,
-        geff_graph: nx.DiGraph,
-        prop_name: str,
+    geff_md: geff.GeffMetadata | None,
+    geff_graph: nx.DiGraph,
+    prop_name: str,
 ) -> str | None:
     """
     Identify the actual name of a property if it exists, given a property name to look for.
@@ -34,8 +34,9 @@ def _identify_prop(
                     ut.show_debug(
                         f"Property '{prop_id}' found in GEFF metadata but not present in all graph nodes.",
                     )
-            
+
     return None
+
 
 def _identify_time_axis(
     geff_md: geff.GeffMetadata | None,
@@ -78,7 +79,9 @@ def _identify_time_axis(
     if time_key is None and axes is not None:
         time_axes = [axis for axis in axes if axis.type == "time"]
         for axis in time_axes:
-            if axis.name is not None and all(axis.name in geff_graph.nodes[node] for node in geff_graph.nodes):
+            if axis.name is not None and all(
+                axis.name in geff_graph.nodes[node] for node in geff_graph.nodes
+            ):
                 time_key = axis.name
                 ut.show_debug(
                     f"Valid time axis inferred from GEFF axes: '{time_key}'.",
@@ -139,7 +142,9 @@ def _identify_space_axes(
         for i, key in enumerate(space_keys):
             if key is None:
                 for axis in space_axes:
-                    if axis.name is not None and all(axis.name in geff_graph.nodes[node] for node in geff_graph.nodes):
+                    if axis.name is not None and all(
+                        axis.name in geff_graph.nodes[node] for node in geff_graph.nodes
+                    ):
                         space_keys[i] = axis.name
                         ut.show_debug(
                             f"Valid space axis inferred from GEFF axes: '{space_keys[i]}'.",
@@ -149,87 +154,49 @@ def _identify_space_axes(
     return space_keys[0], space_keys[1]
 
 
-def _generate_label(geff_graph: nx.Graph | nx.DiGraph) -> None:
+def _generate_label(geff_graph: nx.DiGraph) -> None:
     """
     Add a 'label' node attribute to each node in the graph.
     Each linear path (unbranched segment) receives a unique label starting from 0.
-    
-    A linear path is a maximal sequence of nodes where each internal node has
-    exactly one incoming edge and one outgoing edge. Branching points act as
-    boundaries between paths.
-    
+
     Args:
-        geff_graph (nx.Graph | nx.DiGraph): The graph to label. Modified in-place.
+        geff_graph (nx.DiGraph): The graph to label. Modified in-place.
     """
     labeled_nodes = set()
     label_counter = 0
-    
-    if isinstance(geff_graph, nx.DiGraph):
-        # Directed graph: follow in-degree/out-degree = 1 chains
-        for start_node in geff_graph.nodes():
-            if start_node in labeled_nodes:
-                continue
-            
-            # Start a new linear path.
-            current = start_node
-            path_nodes = []
-            
-            # Follow the chain as long as we have a single successor
-            # with a single predecessor (linear continuation).
-            while current is not None and current not in labeled_nodes:
-                path_nodes.append(current)
-                labeled_nodes.add(current)
-                
-                successors = list(geff_graph.successors(current))
-                
-                if len(successors) == 1:
-                    next_node = successors[0]
-                    predecessors = list(geff_graph.predecessors(next_node))
-                    # Continue only if next node has exactly one predecessor.
-                    if len(predecessors) == 1:
-                        current = next_node
-                    else:
-                        current = None  # branching point ahead
-                else:
-                    current = None  # end of linear path
-            
-            # Assign label to all nodes in this path.
-            for node in path_nodes:
-                geff_graph.nodes[node]['label'] = label_counter
-            
-            label_counter += 1
-    
-    else:
-        # Undirected graph: follow degree = 2 chains
-        for start_node in geff_graph.nodes():
-            if start_node in labeled_nodes:
-                continue
-            
-            # Start a new linear path.
-            current = start_node
-            prev = None
-            path_nodes = []
-            
-            # Follow the chain as long as we have a single unvisited neighbor.
-            while current is not None and current not in labeled_nodes:
-                path_nodes.append(current)
-                labeled_nodes.add(current)
-                
-                # Get neighbors excluding where we came from.
-                neighbors = [n for n in geff_graph.neighbors(current) if n != prev]
-                
-                if len(neighbors) == 1:
-                    prev = current
-                    current = neighbors[0]
-                else:
-                    current = None  # end of path or branching point
-            
-            # Assign label to all nodes in this path.
-            for node in path_nodes:
-                geff_graph.nodes[node]['label'] = label_counter
-            
-            label_counter += 1
 
+    for start_node in geff_graph.nodes():
+        if start_node in labeled_nodes:
+            continue
+
+        # Start a new linear path.
+        current = start_node
+        path_nodes = []
+
+        # Follow the chain as long as we have a single successor
+        # with a single predecessor (linear continuation).
+        while current is not None and current not in labeled_nodes:
+            path_nodes.append(current)
+            labeled_nodes.add(current)
+
+            successors = list(geff_graph.successors(current))
+
+            if len(successors) == 1:
+                next_node = successors[0]
+                predecessors = list(geff_graph.predecessors(next_node))
+                # Continue only if next node has exactly one predecessor.
+                if len(predecessors) == 1:
+                    current = next_node
+                else:
+                    current = None  # branching point ahead
+            else:
+                current = None  # end of linear path
+
+        # Assign label to all nodes in this path.
+        for node in path_nodes:
+            geff_graph.nodes[node]["label"] = label_counter
+
+        label_counter += 1
 
 
 def import_geff(geff_path: str):
@@ -254,9 +221,5 @@ def import_geff(geff_path: str):
 
     if label_key is None:
         _generate_label(geff_graph)
-
-
-
-
 
     return geff_graph, geff_md
