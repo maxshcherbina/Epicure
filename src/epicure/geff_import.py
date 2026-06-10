@@ -1,6 +1,7 @@
 import geff
 import networkx as nx
 import numpy as np
+import os
 from zarr.storage import StoreLike
 
 import epicure.Utils as ut
@@ -297,14 +298,14 @@ def _build_positions_array(
     Returns:
         np.ndarray: The filled positions array with columns [label, time, y, x].
     """
-    positions = np.empty((len(geff_graph), 4), dtype=np.float32)
+    positions = np.empty((len(geff_graph), 4), dtype=np.int32)
     for i, node in enumerate(geff_graph.nodes()):
         node_data = geff_graph.nodes[node]
         positions[i, 0] = node_data[label_key]
         positions[i, 1] = node_data[time_key]
         positions[i, 2] = node_data[y_key]
         positions[i, 3] = node_data[x_key]
-    # TODO @Gaëlle: do we need to sort the positions by time? by label?
+    # TODO Check it s ok not to sort position by time 
     return positions
 
 
@@ -441,4 +442,7 @@ def import_geff(
     else:
         metadata = {}
 
-    return positions, tracks, metadata, labels_path
+    ## labels path is a relative path (relative to GEFF). Convert it to absolute path
+    abs_path = os.path.join( geff_path, labels_path )
+    abs_path = os.path.abspath( abs_path )
+    return positions, tracks, metadata, abs_path

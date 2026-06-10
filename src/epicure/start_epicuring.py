@@ -8,7 +8,7 @@ from napari import current_viewer
 from magicgui import magicgui
 from napari.utils.history import get_save_history, update_save_history 
 from napari.utils import progress
-import pathlib
+import pathlib, os
 import epicure.Utils as ut
 from epicure.epicuring import EpiCure
 import multiprocessing
@@ -41,7 +41,7 @@ def start_from_layers():
             segmented = None
         ut.remove_all_widgets(viewer)
         #ut.remove_widget(viewer, "Start from opened layers")
-        start_epi, epicure_instance = gui_files(movie=movie, movie_path=movie_path, segmented=segmented)
+        start_epi, epicure_instance = gui_files( raw_movie=movie, movie_path=movie_path, segmented=segmented)
         viewer.window.add_dock_widget(start_epi)
         return start_epi
 
@@ -54,14 +54,47 @@ def start_from_layers():
 
 def start_epicure():
     """ Start EpiCure from scratch """
-    gui, epicure = gui_files(movie=None, movie_path ="", segmented=None)
-    return gui
+    #gui, epicure = gui_files(movie=None, movie_path ="", segmented=None)
+    return choose_movie()
+    #return gui
 
-def gui_files(movie=None, movie_path="", segmented=None):
+def choose_movie():
+    """ First choose the raw movie to process """
+    hist = get_save_history()
+    cdir = hist[0]
+    viewer = current_viewer()
+
+    def selected_movie():
+        """ When movie has been selected, check that its valid and go to next step """
+        raw_movie = get_movie.raw_movie.value
+        if not os.path.exists( raw_movie ) or not os.path.isfile( raw_movie ):
+            ut.show_warning( "Select a valid file of the raw movie, or open it in Napari and choose option 'start from opened layers'" )
+            return
+        widget, epic = gui_files( raw_movie = None, movie_path = raw_movie )
+        update_save_history( raw_movie )
+        ut.remove_all_widgets(viewer)
+        viewer.window.add_dock_widget( widget, name="StartEpiCure" )
+    
+    @magicgui(
+            call_button="Go", 
+            _ = {"widget_type": "Label"},
+    )
+    def get_movie( 
+        _ = "Choose raw movie to cure",
+        raw_movie = pathlib.Path(cdir) ):
+        selected_movie()
+    
+    wid = viewer.window.add_dock_widget( get_movie, name="ChooseMovie" )
+    get_movie.raw_movie.changed.connect(selected_movie)
+    return wid
+
+
+def gui_files( raw_movie=None, movie_path="", segmented=None ):
     """ GUI to choose files and parameters """
     hist = get_save_history()
     cdir = hist[0]
     viewer = current_viewer()
+    ut.remove_widget( viewer, "ChooseMovie" )
     Epic = EpiCure(viewer)
     caxis = None
     cval = 0
@@ -69,8 +102,6 @@ def gui_files(movie=None, movie_path="", segmented=None):
 
     def set_visibility():
         """ Visibility of the parameters in the GUI """
-        if movie is not None:
-            get_files.image_file.visible = False
         if segmented is not None:
             get_files.segmentation_file.visible = False
             get_files.segment_with_epyseg.visible = False
@@ -127,11 +158,11 @@ def gui_files(movie=None, movie_path="", segmented=None):
         get_files.timeframe.visible = show 
         get_files.unit_t.visible = show 
 
-    def load_movie():
+    def load_movie( image_file ):
         """ Load and display the selected movie """
         start_time = ut.start_time()
         nonlocal caxis, cval
-        image_file = get_files.image_file.value
+        #image_file = get_files.image_file.value
         caxis, cval = Epic.load_movie(image_file)
         imgdir = ut.get_directory(image_file)
         get_files.segmentation_file.visible = True
@@ -216,29 +247,38 @@ def gui_files(movie=None, movie_path="", segmented=None):
             scale_xy = {"widget_type": "LiteralEvalLineEdit"},
             timeframe = {"widget_type": "LiteralEvalLineEdit"},
             __ = {"widget_type": "Label"},
-            _____ = {"widget_type": "Label"},
-            ______ = {"widget_type": "Label"},
-            segment_with_epyseg = {"widget_type": "PushButton", "label": "Segment now with EpySeg"},
             ___ = {"widget_type": "Label"},
+            segmentation_file ={"widget_type": "FileEdit", "label": "Segmentation file"}, 
+            ____ = {"widget_type": "Label"  },
+            trackmate_file ={"widget_type": "FileEdit", "filter":"*.xml", "label": "TrackMate file"}, 
+            _____ = {"widget_type": "Label"},
+            geff_file ={"widget_type": "FileEdit", "mode": "d", "label": "GEFF folder"}, 
+            ______ = {"widget_type": "Label" },
+            segment_with_epyseg = {"widget_type": "PushButton", "label": "Segment now with EpySeg"},
+            ________ = {"widget_type": "Label"},
             junction_half_thickness={"widget_type": "LiteralEvalLineEdit"},
             nbparallel_threads = {"widget_type": "LiteralEvalLineEdit"},
             verbose_level={"widget_type": "Slider", "min":0, "max": 3},
             go_help = {"widget_type": "PushButton", "label": "Help"},
             )
     def get_files( 
-                   image_file = pathlib.Path(cdir),
+                   #image_file = pathlib.Path(cdir),
                    junction_chanel = 0,
                    _ = "Image metadata",
                    scale_xy = 1,
                    unit_xy = "um",
                    timeframe = 1,
                    unit_t = "min",
-                   __ = "\nSegmentation\n",
-                   _____ = "Load segmentation or TrackMateXML/GEFF file",
+                   __ = "\nSegmentation",
+                   ___ = "Load from skeleton or label file",
                    segmentation_file = pathlib.Path(cdir),
-                   ______ = "OR\t\t",
+                   ____ =  "OR\tfrom TrackMate\t",
+                   trackmate_file = pathlib.Path(cdir),
+                   _____ = "OR\tfrom GEFF   \t",
+                   geff_file = pathlib.Path(cdir),
+                   ______ = "OR \t\t\t",
                    segment_with_epyseg = False,
-                   ___ = "\n",
+                   ________ = "\n",
                    advanced_parameters = False,
                    show_other_chanels = True,
                    show_scale_bar = True,
@@ -253,7 +293,7 @@ def gui_files(movie=None, movie_path="", segmented=None):
                    ):
 
         print("Starting")
-        imname, imdir, outdir = ut.extract_names( image_file, output_dirname )
+        imname, imdir, outdir = ut.extract_names( movie_path, output_dirname )
         update_save_history(imdir)
         #ut.remove_widget(viewer, "Start EpiCure (epicure)")
         ut.remove_all_widgets( viewer )
@@ -268,30 +308,38 @@ def gui_files(movie=None, movie_path="", segmented=None):
         Epic.set_gaps_option( allow_gaps )
         Epic.set_epithelia( epithelial_cells )
         ## to handle segmentation from layer or from file
-        segmentation_input = {"File":segmentation_file} 
+        seg_file = segmentation_file
+        ## check if another segmentation import has been loaded (otherwise they are default to a directory)
+        if trackmate_file.exists() and trackmate_file.is_file() and trackmate_file.suffix == ".xml": 
+            seg_file = trackmate_file
+        elif geff_file.suffix == ".geff" and geff_file.exists():
+            seg_file = geff_file
+        segmentation_input = {"File":seg_file} 
         if segmented is not None:
             segmentation_input["Layer"]=segmented
 
         Epic.go_epicure(outdir, segmentation_input)
     
+    
     set_visibility()
     get_files.call_button.enabled = False
-    get_files.segmentation_file.visible = False
-    get_files.segment_with_epyseg.visible = False
-    get_files.scale_xy.visible = False
-    get_files.unit_xy.visible = False
-    get_files.timeframe.visible = False
-    get_files.unit_t.visible = False
-    if movie is not None:
-        load_movie_from_layers(movie, movie_path, segmented)
-        get_files.image_file.value = movie_path
+    if movie_path is not None:
+        load_movie( movie_path )
+    #get_files.segmentation_file.visible = False
+    #get_files.segment_with_epyseg.visible = False
+    #get_files.scale_xy.visible = False
+    #get_files.unit_xy.visible = False
+    #get_files.timeframe.visible = False
+    #get_files.unit_t.visible = False
+    if raw_movie is not None:
+        load_movie_from_layers( raw_movie, movie_path, segmented )
         show_metatdata(show=True)
         if segmented is not None:
             get_files.call_button.enabled = True
     get_files.junction_chanel.visible = False
     get_files.advanced_parameters.clicked.connect(set_visibility)
     get_files.show_other_chanels.clicked.connect(show_others)
-    get_files.image_file.changed.connect(load_movie)
+    #get_files.image_file.changed.connect(load_movie)
     get_files.junction_chanel.changed.connect(set_chanel)
     get_files.segment_with_epyseg.clicked.connect( launch_napari_epyseg )
     get_files.go_help.clicked.connect( show_documentation )

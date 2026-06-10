@@ -326,7 +326,7 @@ class EpiCure:
         if verbose > 1:
             print("Importing segmentation and tracks from GEFF file")
         import epicure.geff_import as geffy
-        tracks, graph, metadata, labels_path = geffy.import_geff( self.segpath )
+        tracks, graph, metadata, labels_path = geffy.import_geff( segpath )
         self.epi_metadata["Import"] = "GEFF"  ## initially came from a GEFF file
         ## copy the metadata loaded from the GEFF file to the Epicure metadata
         if metadata is not {}:
