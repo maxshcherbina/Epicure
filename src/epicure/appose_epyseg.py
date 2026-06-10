@@ -11,7 +11,7 @@ def share_as_ndarray(img: np.ndarray) -> appose.NDArray:
     return shared
         
 def go_epyseg( image, parameters, progress_bar=None, logger=None ):
-    """ Install env with napari_epyseg if necessary with appose and run epyseg on the image """
+    """ Install a python environment with napari_epyseg if necessary with appose and run epyseg on the image within that environment """
     _logger = logger or logging.getLogger(__name__)
     try:
         pixi_file = resources.files("epicure.resources").joinpath("pixi.toml")

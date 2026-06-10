@@ -1,4 +1,6 @@
 """
+**Creation of customized widgets for the user interface**
+
 Contains some utility functions to create napari widgets and customized it
 """
 

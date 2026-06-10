@@ -1,3 +1,14 @@
+"""
+    **Tracking options and handles track informations.**
+
+    This class offers options to perform tracking within EpiCure.
+    It also handles the tracking information, wether the tracking was performed locally or imported.
+
+    It contains the `graph` that controls the mother-daughter relationship of the cells. The format of the graph is a dictionnary of daughter->mother (key->value) pairs. This is to be compatible with the Laptrack output format and napari Tracks layer.
+
+    The `track_data` table contains the information of all cell center position at each frame. The `Tracks` layer is slow to update so it is updated only when clicking on `Update tracks` in the viewer, but the object `track_data` is keeping the updated information.
+"""
+
 from qtpy.QtWidgets import QVBoxLayout, QWidget # type: ignore
 from epicure.laptrack_centroids import LaptrackCentroids
 import epicure.Utils as ut
