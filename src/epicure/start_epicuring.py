@@ -195,7 +195,7 @@ def gui_files(movie=None, movie_path="", segmented=None):
                    timeframe = 1,
                    unit_t = "min",
                    __ = "\nSegmentation\n",
-                   _____ = "Load segmentation or TrackMateXML file",
+                   _____ = "Load segmentation or TrackMateXML/GEFF file",
                    segmentation_file = pathlib.Path(cdir),
                    ______ = "OR\t",
                    segment_with_epyseg = False,
