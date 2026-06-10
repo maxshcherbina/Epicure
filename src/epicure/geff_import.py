@@ -34,6 +34,47 @@ def _check_preconditions(graph: nx.Graph, metadata: geff.GeffMetadata | None) ->
         )
 
 
+def _identify_labels_path(metadata: geff.GeffMetadata) -> tuple[str | None, str | None]:
+    """
+    Identify the label key and path to the labels image from GEFF metadata.
+
+    Args:
+        metadata (geff.GeffMetadata): The GEFF metadata.
+
+    Returns:
+        tuple[str | None, str | None]: A tuple containing the label key 
+            and the path to the labels image if present, None otherwise.
+    """
+    if metadata.related_objects is None:
+        return None, None
+
+    related_objects = [obj for obj in metadata.related_objects if obj.type == "labels"]
+    if len(related_objects) == 0:
+        return None, None
+    elif len(related_objects) > 1:
+        ut.show_warning(
+            "Multiple related objects of type 'labels' found in GEFF metadata. "
+            "Cannot determine which one to use. No labels image will be imported."
+        )
+        return None, None
+    else:
+        obj = related_objects[0]
+        ut.show_debug(
+            f"Labels image path identified from GEFF metadata: '{obj.path}'.",
+        )
+        if obj.label_prop is not None:
+            ut.show_debug(
+                f"Label property for labels image identified from GEFF metadata: '{obj.label_prop}'.",
+            )
+            return obj.label_prop, obj.path
+        else:
+            ut.show_warning(
+                "Label property for labels image not specified in GEFF metadata. "
+                "Falling back to 'label'.",
+            )
+            return "label", obj.path
+
+
 def _identify_prop(
     geff_md: geff.GeffMetadata | None,
     geff_graph: nx.DiGraph,
@@ -342,7 +383,7 @@ def _get_metadata(
 
 def import_geff(
     geff_path: StoreLike,
-) -> tuple[np.ndarray, dict[int, list[int]], dict[str, str]]:
+) -> tuple[np.ndarray, dict[int, list[int]], dict[str, str], str | None]:
     """
     Import a GEFF file.
 
@@ -350,16 +391,23 @@ def import_geff(
         geff_path (StoreLike): The path to the GEFF file to import.
 
     Returns:
-        tuple[np.ndarray, dict[int, list[int]], dict[str, str]]: A tuple containing:
+        tuple[np.ndarray, dict[int, list[int]], dict[str, str], str | None]: A tuple containing:
             - A positions array with columns [label, time, y, x].
             - A tracks dictionary mapping each daughter label to a list of its mother labels.
             - A dictionary of metadata key-value pairs.
+            - The path to the labels image array if present, None otherwise.
     """
     geff_graph, geff_md = geff.read(geff_path, structure_validation=True)
-
+    
     _check_preconditions(geff_graph, geff_md)
 
-    label_key = _identify_prop(geff_md, geff_graph, "label")
+    if geff_md is not None:
+        label_key, labels_path = _identify_labels_path(geff_md)
+    else:
+        label_key, labels_path = None, None
+    # Even if we have a label key from the related objects, we need to check 
+    # that it's actually present in the graph nodes.
+    label_key = _identify_prop(geff_md, geff_graph, label_key)
     if label_key is None:
         label_key = "label"
         _generate_label(geff_graph)
@@ -393,4 +441,4 @@ def import_geff(
     else:
         metadata = {}
 
-    return positions, tracks, metadata
+    return positions, tracks, metadata, labels_path
