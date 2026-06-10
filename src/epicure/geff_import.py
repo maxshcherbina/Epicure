@@ -342,7 +342,7 @@ def _get_metadata(
 
 def import_geff(
     geff_path: StoreLike,
-) -> tuple[dict[str, str], np.ndarray, dict[int, list[int]]]:
+) -> tuple[np.ndarray, dict[int, list[int]], dict[str, str]]:
     """
     Import a GEFF file.
 
@@ -350,10 +350,10 @@ def import_geff(
         geff_path (StoreLike): The path to the GEFF file to import.
 
     Returns:
-        tuple[dict[str, str], np.ndarray, dict[int, list[int]]]: A tuple containing:
-            - A dictionary of metadata key-value pairs.
+        tuple[np.ndarray, dict[int, list[int]], dict[str, str]]: A tuple containing:
             - A positions array with columns [label, time, y, x].
             - A tracks dictionary mapping each daughter label to a list of its mother labels.
+            - A dictionary of metadata key-value pairs.
     """
     geff_graph, geff_md = geff.read(geff_path, structure_validation=True)
 
