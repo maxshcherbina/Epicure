@@ -82,6 +82,7 @@ def test_init_epic( make_napari_viewer ):
 def test_load_from_layers( make_napari_viewer ):
     """ Open a new EpiCure project from opened layers """
     viewer = make_napari_viewer()
+    #viewer = napari.Viewer(show=False)
     test_img = os.path.join(".", "test_data", "003_crop.tif")
     img, _, _, _, _, _ = ut.open_image(test_img, get_metadata=False, verbose=0)
     movie_layer = viewer.add_image(img, name="TestImage")
@@ -110,7 +111,7 @@ def test_load_from_layers( make_napari_viewer ):
     #viewer.show() # manual check
     
 if __name__ == "__main__":
-    test_load_movie()
+    #test_load_movie()
     test_load_from_layers()
-    test_load_image()
+    #test_load_image()
     print("********* Test basics completed ***********")
