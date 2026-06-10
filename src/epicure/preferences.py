@@ -1,3 +1,10 @@
+"""
+    **EpiCure preferences functions**
+
+    Proposes to set and save the shortcut preferences so that each user can choose his/her favorite keys.
+    This is loaded from and saved to a file called `epicure_preferences.pkl` placed in the home directory of the user, in the .napari folder. 
+"""
+
 from qtpy.QtWidgets import QPushButton, QVBoxLayout, QTabWidget, QWidget, QComboBox, QLabel, QLineEdit, QGroupBox, QHBoxLayout, QColorDialog
 #from qtpy.QtGui import QColor
 import napari
@@ -54,10 +61,10 @@ class Preferences():
     def __init__( self ):
         """ Initialise file path, load current preferences"""
         self.build_preferences_path()
-        print("Running on "+platform.lower())
+        #print("Running on "+platform.lower())
         
         self.ctl = "Control"
-        #self.alt = "Alt"
+        self.alt = "Alt"
         if platform.lower() == "darwin":
             self.ctl = "Command"
 
@@ -249,7 +256,6 @@ class ShortCut( QWidget ):
         
         layout = QVBoxLayout()
         self.ctl = "Control"
-        #self.alt = "Alt"
         if platform.lower() == "darwin":
             self.ctl = "Command"
 
@@ -297,6 +303,7 @@ class ShortCut( QWidget ):
                         cur_modif.addItem("Alt")
                         if platform.lower() == "darwin":
                             cur_modif.addItem("Command")
+                            cur_modif.addItem("Option")
                         new_line.addWidget( cur_modif )
                         cur_modif.setCurrentText( modif )
                         self.sc_guis[sc_type][ shortname+"modifiers"+str(ind) ] = cur_modif

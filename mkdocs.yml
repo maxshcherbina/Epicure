@@ -15,6 +15,8 @@ nav:
     - Additionnal options:
         - Concatenate movies: Concatenate-epicured-movies.md
         - Segment option: Segment-option.md
+    - Tutorials: Tutorials.md
+    - Code documentation: api/index.html
 
 theme:
     logo: imgs/epicure_logo.png

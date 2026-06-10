@@ -5,13 +5,17 @@ target/
 
 # IPython Notebook
 .ipynb_checkpoints
-o# OS
+# OS
 .DS_Store
 
 .github/
 
 __pycache__/
+src/epicure/resources/__pycache__/
+src/epicure/__pycache__/
 
+.pixi/
+pixi.lock
 env/
 build/
 develop-eggs/

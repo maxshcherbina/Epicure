@@ -1,3 +1,14 @@
+"""
+    **Tracking options and handles track informations.**
+
+    This class offers options to perform tracking within EpiCure.
+    It also handles the tracking information, wether the tracking was performed locally or imported.
+
+    It contains the `graph` that controls the mother-daughter relationship of the cells. The format of the graph is a dictionnary of daughter->mother (key->value) pairs. This is to be compatible with the Laptrack output format and napari Tracks layer.
+
+    The `track_data` table contains the information of all cell center position at each frame. The `Tracks` layer is slow to update so it is updated only when clicking on `Update tracks` in the viewer, but the object `track_data` is keeping the updated information.
+"""
+
 from qtpy.QtWidgets import QVBoxLayout, QWidget # type: ignore
 from epicure.laptrack_centroids import LaptrackCentroids
 import epicure.Utils as ut
@@ -751,10 +762,11 @@ class Tracking(QWidget):
     def remove_ids_from_graph( self, track_ids ):
         """ Remove all ids from the graph """
         track_ids_set = set( track_ids )
-        self.graph = {
-            key: vals for key, vals in self.graph.items()
-            if (key not in track_ids_set) and ( not any( val in track_ids_set for val in (vals if isinstance(vals, list) else [vals])) )
-        }
+        if self.graph is not None:
+            self.graph = {
+                key: vals for key, vals in self.graph.items()
+                if (key not in track_ids_set) and ( not any( val in track_ids_set for val in (vals if isinstance(vals, list) else [vals])) )
+            }
     
     def is_single_parent( self, cur_id ):
         """ Return if the current id is in the graph (as a single parent, not a merge) """
@@ -780,7 +792,7 @@ class Tracking(QWidget):
             )
         else:
             track_tables = [ ut.labels_to_table( frame, iframe) for iframe, frame in progress(enumerate(labels), total=total) ]
-        track_table = np.concatenate( track_tables, axis=0 )
+        track_table = np.concatenate( [ tab for tab in track_tables if tab.shape[0] != 0 ], axis=0 ) # handle empty frame
         return track_table, None # track_prop
 
     def add_track_features(self, labels):
@@ -933,7 +945,10 @@ class Tracking(QWidget):
 
     def label_to_dataframe( self, labimg, frame ):
         """ from label, get dataframe of centroids with properties """
-        df = pd.DataFrame( ut.labels_table(labimg, properties=self.region_properties))
+        df = pd.DataFrame( ut.labels_table(labimg, properties=self.region_properties) )
+        if df.shape[0] == 0:
+            ## no labels in this frame
+            return None
         df["frame"] = frame
         return df
     
@@ -952,8 +967,9 @@ class Tracking(QWidget):
     def labels_to_centroids( self, start_frame, end_frame ):
         """ Get centroids of each cell in dataframe """
         regionprops = [
-            self.label_to_dataframe(self.epicure.seg[frame], frame)
+            result
             for frame in range(start_frame, end_frame + 1)
+            if (result := self.label_to_dataframe(self.epicure.seg[frame], frame)) is not None
         ]
         return pd.concat(regionprops)
     
@@ -1036,6 +1052,8 @@ class Tracking(QWidget):
 
     def after_tracking( self, track_df, split_df, merge_df, progress_bar, indprogress ):
         """ Steps after tracking: get/show the graph from the track_df """
+        if "frame_y" in track_df.keys():
+            track_df["frame"] = track_df["frame_y"]
         graph = None
         progress_bar.set_description( "Update labels and tracks" )
         ## shift all by 1 so that doesn't start at 0

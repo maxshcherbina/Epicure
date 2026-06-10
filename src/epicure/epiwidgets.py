@@ -1,3 +1,9 @@
+"""
+**Creation of customized widgets for the user interface**
+
+Contains some utility functions to create napari widgets and customized it
+"""
+
 import epicure.Utils as ut
 from qtpy.QtWidgets import QPushButton, QCheckBox, QHBoxLayout, QVBoxLayout, QLabel, QLineEdit, QComboBox, QSpinBox, QSlider, QGroupBox, QFrame # type: ignore
 from qtpy.QtCore import Qt # type: ignore

@@ -59,6 +59,14 @@ class LaptrackOverlaps():
 
     def perform_track(self, labels):
         """ Do tracking with laptrack module """
+
+        ## handling eventual missing (empty) frame:
+        ind = []
+        for i, lab in enumerate(labels):
+            if len(np.unique(lab)) == 1:
+                ind.append(i)
+        labels = [ lab for i, lab in enumerate(labels) if i not in ind]
+
         if self.version_over:
             ol = OverLapTrack(
                 cutoff=self.cost_cutoff,
@@ -85,6 +93,10 @@ class LaptrackOverlaps():
             )
         
         track_df, split_df, merge_df = ol.predict_overlap_dataframe(labels)
+        ## handle eventual missing frames
+        track_df = track_df.reset_index()
+        track_df["frame"] += np.searchsorted(sorted(ind), track_df["frame"], side='right')
+
         track_df = track_df.reset_index()
         return track_df, split_df, merge_df
 

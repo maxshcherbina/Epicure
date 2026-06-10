@@ -1,3 +1,11 @@
+"""
+    **EpiCure display options**
+
+    Handles the `Display` panel of EpiCure.
+    Proposes some vizualisation options that could be convenient for some users.
+    For example, handles the option to add a grid in the background for spatial guidance or to show the skeleton of the segmentation.
+"""
+
 import numpy as np
 from math import ceil
 from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QComboBox

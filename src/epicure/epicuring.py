@@ -1,3 +1,16 @@
+"""
+    **EpiCure main class.**
+
+    Open and initialize the files.
+    Launch the main widget composed of the segmentation and tracking editing features.
+    This class handles the metadata and do the hub between the different objects/classes. 
+    All other classes are linked to this one.
+
+    The metadata are stored in the `epi_metadata` object.
+    The raw movie is linked in the `self.movie` attribute.
+    The napari viewer referenced by `self.viewer` handles all the layers that are displayed.
+    EpiCure's main parts are organized similarly to the Tab widgets in the interface, with main objects: `edits` to handle segmentation editions, `tracking` for tracking options and handling of the tracking graph and informations, `outputs` to perform analyses or export to other format, `display` for displaying options, `inspecting` to look for potential segmentation errors and handles cellular events (division, extruxion, suspect segmentation).
+"""
 import numpy as np
 import os, time, pickle
 import napari
@@ -18,26 +31,30 @@ from epicure.displaying import Displaying
 from epicure.preferences import Preferences
 import epicure.tm_loader as tm
 
-"""
-    EpiCure main
-    Open and initialize the files
-    Launch the main widget composed of the segmentation and tracking editing features
-"""
-
 
 class EpiCure:
     def __init__(self, viewer=None):
+        """
+        Initialize the EpiCure viewer instance.
+
+        :param: viewer (napari.Viewer, optional): An existing napari Viewer instance to use.
+                If None, a new Viewer instance will be created with show=False.
+                Defaults to None.
+        """
         self.viewer = viewer
+        """ Napari viewer that is used for this session """
         if self.viewer is None:
             self.viewer = napari.Viewer(show=False)
         self.viewer.title = "Napari - EpiCure"
         self.reset()
 
     def reset(self):
-        """ Reset parameters """
+        """ Reset all the parameters to the default values """
         self.init_epicure_metadata()  ## initialize metadata variables (scalings, channels)
         self.img = None
+        """ data of the raw movie """
         self.inspecting = None
+        """ interface for inspection options """
         self.others = None
         self.imgshape2D = None  ## width, height of the image
         self.nframes = None  ## Number of time frames
@@ -45,6 +62,7 @@ class EpiCure:
         self.minsize = 4  ## smallest number of pixels in a cell
         self.verbose = 1  ## level of printing messages (None/few, normal, debug mode)
         self.event_class = ["division", "extrusion", "suspect"]  ## list of possible events
+        self.main_channel = 0  ## position of the main channel (raw movie) 
         
         self.overtext = dict()
         self.help_index = 1  ## current display index of help overlay
@@ -69,7 +87,7 @@ class EpiCure:
 
 
     def init_epicure_metadata(self):
-        """Returns metadata to save"""
+        """ Fills metadata with default values """
         ## scalings and unit names
         self.epi_metadata = {}
         self.epi_metadata["ScaleXY"] = 1
@@ -94,11 +112,34 @@ class EpiCure:
         return None
 
     def set_thickness(self, thick):
-        """Thickness of junctions (half thickness)"""
+        """
+        Thickness of junctions (half thickness)
+        
+        :param: thick set thickness value to input value
+        """
         self.thickness = thick
     
     def movie_from_layer(self, layer, imgpath):
-        """Prepare the intensity movie from opened layer, and get metadata"""
+        """
+        Prepare the intensity movie from opened layer, and get metadata.
+        
+        Resets the internal state, loads image data from the provided layer,
+        handles temporal and channel dimensions, and prepares the movie for processing.
+        
+        It extracts metadata including file path and pixel scale, and attempts to handle various
+        image formats (2D, 3D, 4D with different dimension orders).
+        
+        :param: layer: A napari layer object containing the image data and scale information.
+                The layer's data attribute should contain the image array.
+        :param: imgpath (str): Absolute or relative file path to the image file being loaded.
+        
+        :return:
+            A tuple containing:
+                - caxis (int or None): The axis index corresponding to the channel dimension,
+                  or None if no multiple channels are detected.
+                - cval (int): The number of channels found in the image, or 0 if no channels
+                  are detected.
+        """
         self.reset() ## reload everything 
         self.epi_metadata["MovieFile"] = os.path.abspath(imgpath)
         ## if the layer is scaled, should be the right scale
@@ -136,7 +177,11 @@ class EpiCure:
 
 
     def load_movie(self, imgpath):
-        """Load the intensity movie, and get metadata"""
+        """ 
+            Load the intensity movie, and get metadata
+
+            :param: imgpath: full path to where the movie file is    
+        """
         self.reset() ## reload everything 
         self.epi_metadata["MovieFile"] = os.path.abspath(imgpath)
         self.img, nchan, self.epi_metadata["ScaleXY"], self.epi_metadata["UnitXY"], self.epi_metadata["ScaleT"], self.epi_metadata["UnitT"] = ut.open_image(
@@ -172,24 +217,40 @@ class EpiCure:
 
 
     def quantiles(self):
+        """ Returns the quantiles 1% and 99.999% of the raw image to set the display """
         return tuple(np.quantile(self.img, [0.01, 0.9999]))
 
     def set_verbose(self, verbose):
-        """Set verbose level"""
+        """
+        Set verbose level
+        
+        :param: verbose: amount of message that will be displayed in the Terminal console, from 0 (none) to 4 (a lot, for debugging)
+        """
         self.verbose = verbose
         self.epi_metadata["Verbose"] = verbose
 
     def set_gaps_option(self, allow_gap):
-        """Set the mode for gap allowing/forbid in tracks"""
+        """Set the mode for gap allowing/forbid in tracks
+        
+        :param: allow_gap: boolean. Indicates if gap in tracks (missing cell in one or more frames) should be allowed or not.
+        """
         self.epi_metadata["Allow gaps"] = allow_gap
         self.forbid_gaps = not allow_gap
 
     def set_epithelia(self, epithelia):
-        """Set the mode for cell packing (touching or not especially)"""
+        """
+        Set the mode for cell packing (touching or not especially)
+        
+        :param: epithelia: boolean, True if cells are touching
+        """
         self.epi_metadata["EpithelialCells"] = epithelia
 
     def set_scalebar(self, show_scalebar):
-        """Show or not the scale bar"""
+        """
+        Show or not the scale bar, and set its value
+        
+        :param: show_scalebar: boolean, set the visibility of the scale bar
+        """
         self.epi_metadata["Scale bar"] = show_scalebar
         if self.viewer is not None:
             self.viewer.scale_bar.visible = show_scalebar
@@ -199,7 +260,14 @@ class EpiCure:
             self.viewer.reset_view()
 
     def set_scales(self, scalexy, scalet, unitxy, unitt):
-        """Set the scaling units for outputs"""
+        """
+        Set the scaling units for outputs. Put the values in Epicure metadata object
+        
+        :param: scalexy: size of one pixel in X,Y directions
+        :param: scalet: duration of one frame (acquisition frequency)
+        :param: unitxy: name of the unit in which the scale is given
+        :param: unitt: name of the temporal unit in which the scale is given
+        """
         self.epi_metadata["ScaleXY"] = scalexy
         self.epi_metadata["ScaleT"] = scalet
         self.epi_metadata["UnitXY"] = unitxy
@@ -210,7 +278,12 @@ class EpiCure:
             ut.show_info("Movie scales set to " + str(self.epi_metadata["ScaleXY"]) + " " + self.epi_metadata["UnitXY"] + " and " + str(self.epi_metadata["ScaleT"]) + " " + self.epi_metadata["UnitT"])
 
     def set_chanel(self, chan, chanaxis):
-        """Update the movie to the correct chanel"""
+        """
+        Update the movie to the correct chanel
+        
+        :param: chan: channel in which the raw movie is 
+        :param: chanaxis: in which axis is the color channels information (usually format is TCYX, so will be 1)
+        """
         self.img = np.rollaxis(np.copy(self.mov), chanaxis, 0)[chan]
         if len(self.img.shape) == 2:
             self.img = np.expand_dims(self.img, axis=0)
@@ -622,6 +695,11 @@ class EpiCure:
         return self.inspecting.nb_type("division")
 
     def set_contour(self, width):
+        """ 
+        Set the width of the contour of the cells to display the segmentation
+
+        :param: width: width of the contours of the segmentation (napari contour parameter). If 0 the cell will be filled by its label 
+        """
         self.seglayer.contour = width
 
     ############ Layers
@@ -651,6 +729,9 @@ class EpiCure:
         self.finish_update()
 
     def finish_update(self, contour=None):
+        """
+        After doing modifications on some layer(s), select back the main layer Segmentation as active (important for shortcut bindings) and refresh it
+        """
         if contour is not None:
             self.seglayer.contour = contour
         ut.set_active_layer(self.viewer, "Segmentation")
@@ -675,6 +756,9 @@ class EpiCure:
                 ut.show_warning("Could not read EpiCure metadata file " + epiname)
 
     def save_epicures(self, imtype="float32"):
+        """
+        Save all the current data: the segmentation, the metadata (metadata of the image, last parameters used), the events and some display settings.
+        """
         outname = os.path.join(self.outdir, self.imgname + "_labels.tif")
         ut.writeTif(self.seg, outname, self.epi_metadata["ScaleXY"], imtype, what="Segmentation")
         epiname = os.path.join(self.outdir, self.imgname + "_epidata.pkl")
@@ -710,7 +794,11 @@ class EpiCure:
         return groups
 
     def read_graph_data(self, infile):
-        """Read the graph EpiCure data from opened file"""
+        """
+        Read the graph EpiCure data from opened pickle file
+
+        :param: infile: instance of pickle file being read. This will read the next part of the pickle file and load it in the track graph.
+        """
         try:
             graph = pickle.load(infile)
             if self.verbose > 0:
@@ -748,6 +836,10 @@ class EpiCure:
         """Load saved infos from file"""
         infile = open(epiname, "rb")
         try:
+            if ut.is_windows():
+               import pathlib
+               pathlib.PosixPath = pathlib.WindowsPath
+               #epidata = pickle.load( infile, encoding="utf8" )
             epidata = pickle.load( infile )
             #print(epidata)
             if "EpiMetaData" in epidata.keys():
@@ -759,9 +851,10 @@ class EpiCure:
                 self.load_epicure_data_old(epidata, infile)
         except Exception as e:
             if self.verbose > 1:
-                print(f"Line 619 - {type(e)} {e} - Could not read EpiCure data file {epiname}")
+                print(f" {type(e)} {e} - Could not read EpiCure data file {epiname}")
             else:
                 ut.show_warning(f"Could not read EpiCure data file {epiname}")
+                print(f" {type(e)} {e} - Could not read EpiCure data file {epiname}")
 
     def read_epidata(self, epidata):
         """Read the dict of saved state and initialize all instances with it"""

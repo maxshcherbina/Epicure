@@ -1,3 +1,16 @@
+"""
+    ** EpiCure - Inspect panel interface **
+
+    Handle supects and events detection layer.
+    Inspection functions propose to look for user selected features to detect potential errors in the segmentration from inspecting the tracks.
+
+    Extrusion events are detected as disappearance of a track & a cell size small enough.
+    Divisions events can be detected by the tracking algorithm directly and saved in the track graph, or they can be detected by the inspection as the disappearance of one track at the same time that two new tracks appear in the same area.
+
+    Inpsection could also be performed on a static image by looking at outlier values of a selected feature.
+"""
+
+
 import numpy as np
 from skimage import filters
 from skimage.measure import regionprops
@@ -9,14 +22,12 @@ import epicure.epiwidgets as wid
 import time
 from joblib import Parallel, delayed
 
-"""
-    EpiCure - Inspection interface
-    Handle supects, events detection layer
-"""
-
 class Inspecting(QWidget):
     
     def __init__(self, napari_viewer, epic):
+        """
+        Generate the graphical interface for the inspection panel, and initialize the events layer.
+        """
         super().__init__()
         self.viewer = napari_viewer
         self.epicure = epic
@@ -76,7 +87,7 @@ class Inspecting(QWidget):
         self.key_binding()
 
     def key_binding(self):
-        """ active key bindings for events options """
+        """ active key bindings (keyboard and mouse shortcuts) for events options """
         sevents = self.epicure.shortcuts["Events"]
         self.epicure.overtext["events"] = "---- Events editing ---- \n"
         self.epicure.overtext["events"] += ut.print_shortcuts( sevents )
@@ -417,6 +428,7 @@ class Inspecting(QWidget):
         self.events.face_color = feature
     
     def update_display(self):
+        """ Update the display of the events layer """
         self.events.refresh()
         self.color_events()
 
@@ -525,7 +537,11 @@ class Inspecting(QWidget):
         if self.event_types.get(feature) is None:
             self.event_types[feature] = []
         self.event_types[feature].append(sid)
-        self.events.properties["score"][ind] = self.events.properties["score"][ind] + 1
+        score = self.events.properties["score"].copy()
+        score[ind] = score[ind] + 1
+        self.events.properties["score"] = score 
+        self.events.properties["score"].flags.writeable = True
+        #self.events.properties()
 
     def first_event(self, pos, label, featurename):
         """ Addition of the first event (initialize all) """
@@ -537,6 +553,10 @@ class Inspecting(QWidget):
         features["score"] = np.array([0], dtype="uint8")
         pts = [pos]
         self.events = self.viewer.add_points( np.array(pts), properties=features, face_color="score", size = int( self.event_size.value() ), symbol="x", name="Events", scale=self.viewer.layers["Segmentation"].scale )
+        props = self.events.properties
+        props["label"].flags.writeable = True
+        props["score"].flags.writeable = True
+        props["id"].flags.writeable = True
         self.add_event_type(0, sid, featurename)
         self.events.refresh()
         self.update_nevents_display()
@@ -574,9 +594,13 @@ class Inspecting(QWidget):
             ind = len(self.events.data)
             sid = self.new_event_id()
             self.events.add(pos)
-            self.events.properties["label"][ind] = label
-            self.events.properties["id"][ind] = sid
-            self.events.properties["score"][ind] = 0
+            props = self.events.properties
+            props["label"].flags.writeable = True
+            props["score"].flags.writeable = True
+            props["id"].flags.writeable = True
+            props["label"][ind] = label
+            props["id"][ind] = sid
+            props["score"][ind] = 0
             self.add_event_type(ind, sid, reason)
 
         self.events.symbol.flags.writeable = True
@@ -760,7 +784,9 @@ class Inspecting(QWidget):
 
     def decrease_score(self, ind):
         """ Decrease by one score of event at index ind. Delete it if reach 0"""
-        self.events.properties["score"][ind] = self.events.properties["score"][ind] - 1
+        score = self.events.properties["score"]
+        score.flags.writeable = True
+        score[ind] = score[ind] - 1
         if self.events.properties["score"][ind] == 0:
             self.exonerate_one( ind, remove_division=False )
             self.update_nevents_display()

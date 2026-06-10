@@ -1,3 +1,10 @@
+"""
+    **EpiCure Edit interface**
+
+    Handles the panel `Edit` of EpiCure interface and user interaction to edit the segmentation.
+    It proposes options like `Group` to classify cells, `Seeds` to perform semi-automatic segmentation based on seeds placed manually by the user, `sanity check` to check that all the epicure data are fine.
+"""
+
 import numpy as np
 import edt # type: ignore
 from skimage.segmentation import watershed, clear_border, find_boundaries, random_walker
@@ -17,6 +24,7 @@ class Editing( QWidget ):
     """ Handle user interaction to edit the segmentation """
 
     def __init__(self, napari_viewer, epic):
+        """ Initialize the Edit panel interface """
         super().__init__()
         self.viewer = napari_viewer
         self.epicure = epic

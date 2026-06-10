@@ -21,7 +21,7 @@ jobs:
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
       - uses: actions/setup-python@v5
         with:
-          python-version: 3.x
+          python-version: "3.10"
       - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV 
 
 
@@ -30,10 +30,12 @@ jobs:
           key: mkdocs-material-${{ env.cache_id }}
           path: ~/.cache 
 
-
           restore-keys: |
             mkdocs-material-
       - run: pip install mkdocs-material 
-
-
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libopengl0
+      - run: pip install pdoc
+      - run: pip install -e .
+      - run: pdoc epicure -o docs/api
       - run: mkdocs gh-deploy --force

@@ -1,7 +1,13 @@
+"""
+    **EpiCure output interface**
+
+    Handles the onglet `Output` of EpiCure interface.
+    This panel offers option to export the results in various format or to analyse directly the results in the plugin and display the measures tables, plot and save it.
+
+"""
 import pandas as pand
 import numpy as np
 import roifile
-from skimage.morphology import binary_erosion, disk, binary_dilation
 from skimage.measure import label
 import os, time
 import napari
@@ -13,17 +19,35 @@ from epicure.geff_export import save_geff
 import plotly.express as px
 from qtpy import QtCore
 from qtpy.QtCore import Qt
-QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts, True)  ## for QtWebEngine import to work on some computers
-from qtpy.QtWebEngineWidgets import QWebEngineView 
-from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QTableWidget, QTableWidgetItem, QGridLayout, QListWidget
+from qtpy.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget, QTableWidget, QTableWidgetItem, QGridLayout, QListWidget, QTextBrowser
 from qtpy.QtWidgets import QAbstractItemView as aiv
 from random import sample
 from joblib import Parallel, delayed
+import webbrowser
+import tempfile
+try:
+    QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts, True)  ## for QtWebEngine import to work on some computers
+except:
+    pass
+
+from skimage.morphology import disk
+import skimage
+if ut.version_above( skimage, "0.25" ):
+    try:
+        from skimage.morphology import erosion as binary_erosion 
+    except:
+        from skimage.morphology import binary_erosion
+else:
+    try:
+        from skimage.morphology import binary_erosion
+    except:
+        from skimage.morphology import erosion as binary_erosion 
     
 
 class Outputing(QWidget):
 
     def __init__(self, napari_viewer, epic):
+        """ Initialisation of the interface """
         super().__init__()
         self.viewer = napari_viewer
         self.epicure = epic
@@ -605,7 +629,8 @@ class Outputing(QWidget):
                 frame_table["Neighbors"] = frame_table["neighborlist"].apply(
                 lambda x: "&".join(map(str, x)) if x else ""
                 )
-            frame_table.drop(columns="neighborlist", inplace=True)
+            if do_neighbor or get_neighbor:
+                frame_table.drop(columns="neighborlist", inplace=True)
             return pand.DataFrame( frame_table.to_dict(orient="records") )
 
         if self.epicure.process_parallel:
@@ -1602,7 +1627,16 @@ class TemporalPlots(QWidget):
                     addfig.update_traces( patch={"line": {"dash":"dot"}} )
                     self.fig.add_trace( addfig.data[0] )
     
-        self.browser.setHtml( self.fig.to_html(include_plotlyjs='cdn'))
+        if self.webengine:
+            self.browser.setHtml( self.fig.to_html(include_plotlyjs='cdn'))
+        else:
+            self.show_plot_in_browser( self.fig.to_html(include_plotlyjs='cdn'))
+        
+    def show_plot_in_browser(self,html):
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as f:
+            f.write(html)
+            url = 'file://' + f.name
+            webbrowser.open(url)
 
     def smooth_df( self, df ):
         """ Smooth temporally the dataframe by label or by group """
@@ -1614,7 +1648,7 @@ class TemporalPlots(QWidget):
             feat = feat+"_smooth"
         else:
             self.df[feat+"_smooth"] = self.df[feat].rolling(rollsize, center=True).mean()
-            print(self.df)
+            #print(self.df)
             feat = feat+"_smooth"
 
     def save_plot_image( self ):
@@ -1652,10 +1686,55 @@ class TemporalPlots(QWidget):
         #    self.fig.add_vline( x=frame, line_dash="dash", line_color="gray" )
         #    self.browser.setHtml( self.fig.to_html(include_plotlyjs='cdn'))
 
+
+
+    def import_webengineview(self):
+        """Return QWebEngineView from whichever Qt is available."""
+        import importlib
+        try:
+            # Fall back to Qt5
+            mod = importlib.import_module("PyQt5.QtWebEngineWidgets")
+            self.browser = mod.QWebEngineView(self)
+            return 
+        except Exception:
+            pass
+        
+        try:
+            # Try Qt6 first
+            view = importlib.import_module("PyQt6.QtWebEngineWidgets")
+            self.browser = view.QWebEngineView( parent=self )
+            return  
+        except Exception as e:
+            print(e)
+            pass
+
+        raise ImportError(
+            "No QtWebEngine found. Install PyQt6-WebEngine or PyQtWebEngine."
+        )
+
+
     def create_plotwidget(self):
         """ Create plot window """
-        self.browser = QWebEngineView(self)
+        try:
+            self.import_webengineview()
+            self.webengine = True
+        except:
+            self.webengine = False
+            self.browser = NoEngineViewer()
+            return self.browser
+        print(self.webengine)
         return self.browser
 
-    
-
+class NoEngineViewer(QWidget):
+    def __init__(self):
+        super().__init__()
+        layout = QVBoxLayout()
+        self.text_browser = QTextBrowser()
+        self.text_browser.setHtml("<h2>Plots will be redirected to web browser</h2>" \
+        "" \
+        "Your napari installation is using pyside6 that doesn't have the necessary dependency to show the plot in this window interactively. To have this option, reinstall napari with pyqt5 or pyqt6." \
+        "" \
+        "Otherwise, you can still see the plot, it will open in your web browser, but will be slower to display, reload the web page if nothing appears." \
+        "")
+        layout.addWidget(self.text_browser)
+        self.setLayout(layout)
