@@ -3,9 +3,12 @@ Test IO options for GEFF, and some critical GEFF related functions.
 Corresponding code in src/epicure/geff_import.py and src/epicure/geff_export.py
 """
 
+import os
+
 import networkx as nx
 
 from epicure.geff_import import _generate_label
+import epicure.epicuring as epicure
 
 
 def test_generate_label():
@@ -74,18 +77,50 @@ def test_generate_label():
         assert digraph.nodes[node]["label"] == digraph.nodes[node]["manual_label"], msg
 
 
-def test_export_geff():
+def test_export_geff(make_napari_viewer):
     """Export tracks as a GEFF file"""
-    # TODO
-    pass
+    raw_path = os.path.join(".", "test_data", "013_crop.tif")
+    geff_path = os.path.join(".", "test_data", "epics", "013_crop.geff")
+    if os.path.exists(geff_path):
+        os.remove(geff_path)
+
+    viewer = make_napari_viewer()
+    epic = epicure.EpiCure(viewer)
+    epic.verbose = 3  # 0: minimal to 3: debug informations
+    epic.load_movie(raw_path)
+    epic.go_epicure(outdir="epics")
+
+    epic.outputing.output_mode.setCurrentText("All cells")
+    epic.outputing.save_geff()
+
+    ## check that metadata were well read
+    assert epic.epi_metadata["ScaleXY"] == 0.2
+    assert int(epic.epi_metadata["ScaleT"]) == 300
+    ## check that GEFF file was generated
+    assert os.path.exists(geff_path)
 
 
-def test_import_geff():
+def test_import_geff(make_napari_viewer):
     """Test import a GEFF file into EpiCure structure"""
-    # TODO
-    pass
+    raw_path = os.path.join(".", "test_data", "013_crop.tif")
+    geff_path = os.path.join(".", "test_data", "epics", "013_crop.geff")
+
+    viewer = make_napari_viewer()
+    epic = epicure.EpiCure(viewer)
+    epic.verbose = 3  # 0: minimal to 3: debug informations
+    epic.load_movie(raw_path)
+    epic.go_epicure("epics", geff_path)
+    ## should be tracked
+    assert epic.tracked > 0
+    ## should have loaded divisions from the geff graph
+    assert epic.nb_divisions() > 0
+
+    # TODO: check that number of nodes is equal to number of lines in positions table
+    # and check also the number of division events
 
 
 if __name__ == "__main__":
     test_generate_label()
+    test_export_geff()
+    test_import_geff()
     print("********* Test import/export to GEFF completed ***********")
