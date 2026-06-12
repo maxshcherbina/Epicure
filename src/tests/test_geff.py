@@ -10,8 +10,8 @@ import geff
 import napari
 import networkx as nx
 
-from epicure.geff_import import _generate_label
 import epicure.epicuring as epicure
+from epicure.geff_import import _generate_label
 
 
 def test_generate_label():
@@ -131,32 +131,65 @@ def test_export_geff(make_napari_viewer):
     )
 
 
-# def test_import_geff(make_napari_viewer):
-def test_import_geff():
+def test_import_geff(make_napari_viewer):
     """Test import a GEFF file into EpiCure structure"""
-
-    viewer = napari.Viewer(show=False)
-
     raw_path = os.path.join(".", "test_data", "013_crop.tif")
     geff_path = os.path.join(".", "test_data", "epics", "013_crop.geff")
-    # From Gaëlle: labels 67 and 15 are missing
 
-    # viewer = make_napari_viewer()
+    # viewer = napari.Viewer(show=False)
+    viewer = make_napari_viewer()
     epic = epicure.EpiCure(viewer)
     epic.verbose = 3  # 0: minimal to 3: debug informations
     epic.load_movie(raw_path)
     epic.go_epicure("epics", geff_path)
-    ## should be tracked
-    assert epic.tracked > 0
-    ## should have loaded divisions from the geff graph
-    assert epic.nb_divisions() > 0
 
-    # TODO: check that number of nodes is equal to number of lines in positions table
-    # and check also the number of division events
+    geff_graph, geff_md = geff.read(geff_path, structure_validation=True)
+
+    ## Metadata check
+    x_unit = geff_md.axes[0].scaled_unit
+    x_unit_epi = epic.epi_metadata.get("UnitXY")
+    x_scale = geff_md.axes[0].scale
+    x_scale_epi = epic.epi_metadata["ScaleXY"]
+    assert x_unit == x_unit_epi, f"Expected unit {x_unit} for x axis but got {x_unit_epi}"
+    assert x_scale == x_scale_epi, (
+        f"Expected scale {x_scale} for x axis but got {x_scale_epi}"
+    )
+    t_unit = geff_md.axes[2].scaled_unit
+    t_unit_epi = epic.epi_metadata.get("UnitT")
+    t_scale = geff_md.axes[2].scale
+    t_scale_epi = epic.epi_metadata["ScaleT"]
+    assert t_unit == t_unit_epi, (
+        f"Expected unit {t_unit} for time axis but got {t_unit_epi}"
+    )
+    assert t_scale == t_scale_epi, (
+        f"Expected scale {t_scale} for time axis but got {t_scale_epi}"
+    )
+
+    ## Data check
+    assert epic.tracked > 0
+    # Check that there is the same number of divisions.
+    n_divs = len([n for n in geff_graph.nodes() if geff_graph.out_degree(n) > 1])
+    n_divs_epi = epic.nb_divisions()
+    assert n_divs == n_divs_epi, (
+        f"Expected {n_divs} divisions but found {n_divs_epi} in the GEFF."
+    )
+    # Check that the labels are identical.
+    labels_epi = set(int(label) for label in epic.tracking.track_data[:, 0])
+    labels = set(geff_graph.nodes[n]["label"] for n in geff_graph.nodes())
+    diff_left = list(labels.difference(labels_epi))
+    diff_right = list(labels_epi.difference(labels))
+    msg = f"Missing labels in GEFF: {diff_left}, extra labels in GEFF: {diff_right}."
+    assert labels == labels_epi, msg
+    # Check that there is the same number of detections.
+    n_detections_epi = epic.tracking.track_data.shape[0]
+    n_detections = len(geff_graph.nodes())
+    assert n_detections == n_detections_epi, (
+        f"Expected {n_detections} detections but found {n_detections_epi} in the GEFF."
+    )
 
 
 if __name__ == "__main__":
-    # test_generate_label()
+    test_generate_label()
     test_export_geff()
-    # test_import_geff()
+    test_import_geff()
     print("********* Test import/export to GEFF completed ***********")
