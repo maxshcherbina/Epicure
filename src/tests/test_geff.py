@@ -4,7 +4,10 @@ Corresponding code in src/epicure/geff_import.py and src/epicure/geff_export.py
 """
 
 import os
+import shutil
 
+import geff
+import napari
 import networkx as nx
 
 from epicure.geff_import import _generate_label
@@ -14,7 +17,7 @@ import epicure.epicuring as epicure
 def test_generate_label():
     """Test the _generate_label function which generates labels for each linear path in the graph."""
 
-    # There are 2 components in this graph, and splits and merges.
+    # There are 2 components in this graph, with splits and merges.
     digraph = nx.DiGraph()
     digraph.add_nodes_from(
         [
@@ -79,33 +82,66 @@ def test_generate_label():
 
 def test_export_geff(make_napari_viewer):
     """Export tracks as a GEFF file"""
+
     raw_path = os.path.join(".", "test_data", "013_crop.tif")
     geff_path = os.path.join(".", "test_data", "epics", "013_crop.geff")
     if os.path.exists(geff_path):
-        os.remove(geff_path)
+        shutil.rmtree(geff_path)
 
+    # viewer = napari.Viewer(show=False)
     viewer = make_napari_viewer()
     epic = epicure.EpiCure(viewer)
     epic.verbose = 3  # 0: minimal to 3: debug informations
     epic.load_movie(raw_path)
     epic.go_epicure(outdir="epics")
-
     epic.outputing.output_mode.setCurrentText("All cells")
     epic.outputing.save_geff()
 
-    ## check that metadata were well read
-    assert epic.epi_metadata["ScaleXY"] == 0.2
-    assert int(epic.epi_metadata["ScaleT"]) == 300
-    ## check that GEFF file was generated
+    geff_graph, geff_md = geff.read(geff_path, structure_validation=True)
+
+    ## Metadata check
+    assert "pixel" == geff_md.axes[0].unit
+    assert epic.epi_metadata["ScaleXY"] == geff_md.axes[0].scale
+    assert epic.epi_metadata.get("UnitXY") == geff_md.axes[0].scaled_unit
+    assert "frame" == geff_md.axes[2].unit
+    assert epic.epi_metadata["ScaleT"] == geff_md.axes[2].scale
+    assert epic.epi_metadata.get("UnitT") == geff_md.axes[2].scaled_unit
+
+    ## Data check
+    # Check that the GEFF file was generated and saved.
     assert os.path.exists(geff_path)
+    # Check that there is the same number of divisions.
+    n_divs = epic.nb_divisions()
+    n_divs_geff = len([n for n in geff_graph.nodes() if geff_graph.out_degree(n) > 1])
+    assert n_divs == n_divs_geff, (
+        f"Expected {n_divs} divisions but found {n_divs_geff} in the GEFF."
+    )
+    # Check that the labels are identical.
+    labels = set(int(label) for label in epic.tracking.track_data[:, 0])
+    labels_geff = set(geff_graph.nodes[n]["label"] for n in geff_graph.nodes())
+    diff_left = list(labels.difference(labels_geff))
+    diff_right = list(labels_geff.difference(labels))
+    msg = f"Missing labels in GEFF: {diff_left}, extra labels in GEFF: {diff_right}."
+    assert labels == labels_geff, msg
+    # Check that there is the same number of detections.
+    n_detections = epic.tracking.track_data.shape[0]
+    n_detections_geff = len(geff_graph.nodes())
+    assert n_detections == n_detections_geff, (
+        f"Expected {n_detections} detections but found {n_detections_geff} in the GEFF."
+    )
 
 
-def test_import_geff(make_napari_viewer):
+# def test_import_geff(make_napari_viewer):
+def test_import_geff():
     """Test import a GEFF file into EpiCure structure"""
+
+    viewer = napari.Viewer(show=False)
+
     raw_path = os.path.join(".", "test_data", "013_crop.tif")
     geff_path = os.path.join(".", "test_data", "epics", "013_crop.geff")
+    # From Gaëlle: labels 67 and 15 are missing
 
-    viewer = make_napari_viewer()
+    # viewer = make_napari_viewer()
     epic = epicure.EpiCure(viewer)
     epic.verbose = 3  # 0: minimal to 3: debug informations
     epic.load_movie(raw_path)
@@ -120,7 +156,7 @@ def test_import_geff(make_napari_viewer):
 
 
 if __name__ == "__main__":
-    test_generate_label()
+    # test_generate_label()
     test_export_geff()
-    test_import_geff()
+    # test_import_geff()
     print("********* Test import/export to GEFF completed ***********")
