@@ -1,7 +1,8 @@
+import os
+
 import geff
 import networkx as nx
 import numpy as np
-import os
 from zarr.storage import StoreLike
 
 import epicure.Utils as ut
@@ -43,7 +44,7 @@ def _identify_labels_path(metadata: geff.GeffMetadata) -> tuple[str | None, str 
         metadata (geff.GeffMetadata): The GEFF metadata.
 
     Returns:
-        tuple[str | None, str | None]: A tuple containing the label key 
+        tuple[str | None, str | None]: A tuple containing the label key
             and the path to the labels image if present, None otherwise.
     """
     if metadata.related_objects is None:
@@ -305,7 +306,7 @@ def _build_positions_array(
         positions[i, 1] = node_data[time_key]
         positions[i, 2] = node_data[y_key]
         positions[i, 3] = node_data[x_key]
-    # TODO Check it s ok not to sort position by time 
+    # TODO Check it s ok not to sort position by time
     return positions
 
 
@@ -338,6 +339,10 @@ def _get_metadata(
     """
     Extract metadata from GEFF metadata object.
 
+    In EpiCure, time and space metadata are stored as UnitT, ScaleT, UnitXY, ScaleXY,
+    with UnitXY and UnitT being expressed in real world units. However, the data
+    in the GEFF graph AND in EpiCure are expressed in pixel and frame units.
+
     Args:
         metadata (geff.GeffMetadata): The GEFF metadata.
         time_key (str): The key for the time/frame attribute.
@@ -353,20 +358,19 @@ def _get_metadata(
     if metadata.axes is not None:
         for axis in metadata.axes:
             if axis.name == time_key:
-                md["UnitT"] = axis.unit
+                md["UnitT"] = axis.scaled_unit
                 md["ScaleT"] = axis.scale
-                md["ScaledUnitT"] = axis.scaled_unit
             elif axis.name == x_key:
                 x_axis = axis
             elif axis.name == y_key:
                 y_axis = axis
 
     if x_axis is not None and y_axis is not None:
-        if x_axis.unit == y_axis.unit:
-            md["UnitXY"] = x_axis.unit
+        if x_axis.scaled_unit == y_axis.scaled_unit:
+            md["UnitXY"] = x_axis.scaled_unit
         else:
             ut.show_warning(
-                f"Different units for x and y axes: '{x_axis.unit}' and '{y_axis.unit}'. "
+                f"Different units for x and y axes: '{x_axis.scaled_unit}' and '{y_axis.scaled_unit}'. "
                 "UnitXY metadata will not be set."
             )
         if x_axis.scale == y_axis.scale:
@@ -376,8 +380,6 @@ def _get_metadata(
                 f"Different scales for x and y axes: '{x_axis.scale}' and '{y_axis.scale}'. "
                 "ScaleXY metadata will not be set."
             )
-        if x_axis.scaled_unit == y_axis.scaled_unit:
-            md["ScaledUnitXY"] = x_axis.scaled_unit
 
     return md
 
@@ -399,14 +401,14 @@ def import_geff(
             - The path to the labels image array if present, None otherwise.
     """
     geff_graph, geff_md = geff.read(geff_path, structure_validation=True)
-    
+
     _check_preconditions(geff_graph, geff_md)
 
     if geff_md is not None:
         label_key, labels_path = _identify_labels_path(geff_md)
     else:
         label_key, labels_path = None, None
-    # Even if we have a label key from the related objects, we need to check 
+    # Even if we have a label key from the related objects, we need to check
     # that it's actually present in the graph nodes.
     label_key = _identify_prop(geff_md, geff_graph, label_key)
     if label_key is None:
@@ -443,6 +445,6 @@ def import_geff(
         metadata = {}
 
     ## labels path is a relative path (relative to GEFF). Convert it to absolute path
-    abs_path = os.path.join( geff_path, labels_path )
-    abs_path = os.path.abspath( abs_path )
+    abs_path = os.path.join(geff_path, labels_path)
+    abs_path = os.path.abspath(abs_path)
     return positions, tracks, metadata, abs_path
