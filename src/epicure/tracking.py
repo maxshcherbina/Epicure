@@ -158,9 +158,11 @@ class Tracking(QWidget):
         self.track_data = None
         ut.remove_layer( self.viewer, "Tracks" )
 
-    def init_tracks(self):
+    def init_tracks(self, track_table=None, track_prop=None ):
         """ Add a track layer with the new tracks """
-        track_table, track_prop = self.create_tracks()
+        if track_table is None:
+            track_table, track_prop = self.create_tracks()
+        #print(track_table)
         
         ## plot tracks
         if len(track_table) > 0:

@@ -1400,7 +1400,7 @@ class Editing( QWidget ):
         progress_bar.update(2)
         progress_bar.set_description("Reset: reinit tracks")
         self.epicure.tracked = 0
-        self.epicure.load_tracks(progress_bar)
+        self.epicure.load_tracks( None, progress_bar)
         if self.epicure.verbose > 0:
             print("Resetting done")
         progress_bar.close()

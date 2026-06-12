@@ -320,6 +320,19 @@ class EpiCure:
                 mview.contrast_limits=tuple(np.quantile(self.others[ochan],[0.01, 0.9999]))
                 mview.gamma=0.95
                 mview.visible = False
+    
+    def import_geff(self, segpath, verbose=0):
+        """ Load segmentation and tracks from GEFF file """
+        if verbose > 1:
+            print("Importing segmentation and tracks from GEFF file")
+        import epicure.geff_import as geffy
+        tracks, graph, metadata, labels_path = geffy.import_geff( segpath )
+        self.epi_metadata["Import"] = "GEFF"  ## initially came from a GEFF file
+        ## copy the metadata loaded from the GEFF file to the Epicure metadata
+        if metadata is not {}:
+            for key, val in metadata.items():
+                self.epi_metadata[key] = val
+        return labels_path, graph, tracks
 
     def import_trackmate(self, segpath, verbose=0):
         """ Load segmentation and tracks from TrackMate XML file """
@@ -336,6 +349,7 @@ class EpiCure:
         positions = tm.relabel_positions(label_mapping, positions)
         tracks = tm.relabel_tracks(label_mapping, tracks)
         segmentation = tm.relabel_segmentation(label_mapping, segmentation)
+        self.epi_metadata["Import"] = "TrackMate"  ## initially came from a TrackMate file
         return segmentation, tracks
 
 
@@ -343,6 +357,7 @@ class EpiCure:
         """Load the segmentation file"""
         start_time = ut.start_time()
         self.graph = None ## no loaded graph
+        track_table = None ## no loaded track data
         ## compatibility to string input, the path to the image or a dictionnary
         if isinstance(seg_input, dict):
             segpath = seg_input["File"]
@@ -357,6 +372,14 @@ class EpiCure:
             if str(segpath).endswith(".xml"):
                 ## import a TrackMate file
                 self.seg, self.graph = self.import_trackmate(segpath, verbose=self.verbose>1)
+            elif str(segpath).endswith(".geff"):
+                ## import a GEFF file
+                label_path, self.graph, track_table = self.import_geff(segpath, verbose=self.verbose>1)
+                if label_path is not None:
+                    self.seg, _, _, _, _, _ = ut.open_image( label_path, get_metadata=False, verbose=self.verbose > 1)
+                else:
+                    ut.show_error( "No labelled movie found in the GEFF file. This case is not yet handled by EpiCure. Please raise an issue in the github so that we add it." )
+                    return
             else:
                 self.seg, _, _, _, _, _ = ut.open_image(segpath, get_metadata=False, verbose=self.verbose > 1)
         self.seg = np.uint32(self.seg)
@@ -388,14 +411,17 @@ class EpiCure:
             self.seglayer = self.viewer.add_labels(self.seg, name="Segmentation", blending="additive", opacity=0.5, scale=scale)
             self.viewer.dims.set_point(0, 0)
             self.seglayer.brush_size = 4  ## default label pencil drawing size
+        
         if self.verbose > 0:
             ut.show_duration(start_time, header="Segmentation loaded in ")
+        
+        return track_table
 
 
-    def load_tracks(self, progress_bar):
+    def load_tracks(self, track_table, progress_bar):
         """From the segmentation, get all the metadata"""
         tracked = "tracked"
-        self.tracking.init_tracks()
+        self.tracking.init_tracks( track_table )
         if self.tracked == 0:
             tracked = "untracked"
         else:
@@ -442,7 +468,7 @@ class EpiCure:
         progress_bar = progress(total=5)
         progress_bar.set_description("Reading segmented image")
         ## load the segmentation
-        self.load_segmentation(segmentation_input)
+        track_table = self.load_segmentation( segmentation_input )
         if isinstance(segmentation_input, dict):
             self.epi_metadata["SegmentationFile"] = segmentation_input["File"]
         else:
@@ -459,7 +485,7 @@ class EpiCure:
         self.main_widget()
         progress_bar.update(3)
         progress_bar.set_description("Load tracks")
-        self.load_tracks(progress_bar)
+        self.load_tracks( track_table, progress_bar)
         progress_bar.update(4)
 
         ## load graph if it exists
