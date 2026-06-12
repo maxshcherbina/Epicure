@@ -51,13 +51,21 @@ def create_label_to_track_mapping(
 def build_nodes_df(
     track_data: np.ndarray, divisions: Dict[int, List[int]]
 ) -> pd.DataFrame:
-    """Build a DataFrame representing the nodes for the GEFF graph."""
+    """
+    Build a DataFrame representing the nodes for the GEFF graph.
+
+    Args:
+        track_data: numpy array with columns [label, frame, y, x]
+        divisions: dict of {daughter_label: [mother_labels]} from epic.tracking.graph
+
+    Returns:
+        pd.DataFrame with columns [node_id, label, frame, y, x, track_id]
+    """
     df = pd.DataFrame(track_data, columns=["label", "frame", "y", "x"])
     df["node_id"] = df.index
 
     # Generate and assign track IDs.
     labels = list(df["label"].unique())
-    print(f"Nb labels: {len(labels)}")
     label_to_track_id = create_label_to_track_mapping(divisions, labels)
     df["track_id"] = df["label"].map(label_to_track_id)
 
@@ -65,7 +73,16 @@ def build_nodes_df(
 
 
 def build_edges_df(divisions: Dict[int, List[int]], df_nodes: pd.DataFrame):
-    """"""
+    """
+    Build a DataFrame representing the edges for the GEFF graph.
+
+    Args:
+        divisions: dict of {daughter_label: [mother_labels]} from epic.tracking.graph
+        df_nodes: DataFrame with node information
+
+    Returns:
+        pd.DataFrame with columns [in_id, out_id]
+    """
     if divisions is not None:
         for daughter, mothers in divisions.items():
             if len(mothers) > 1:
@@ -137,7 +154,15 @@ def build_edges_df(divisions: Dict[int, List[int]], df_nodes: pd.DataFrame):
 
 
 def build_nx_digraph(epic) -> nx.DiGraph:
-    """Build a NetworkX directed graph from EpiCure data."""
+    """
+    Build a NetworkX directed graph from EpiCure data.
+
+    Args:
+        epic: EpiCure instance with tracking data and graph
+
+    Returns:
+        nx.DiGraph: directed graph representing the cell lineages
+    """
 
     df_nodes = build_nodes_df(epic.tracking.track_data, epic.tracking.graph)
     df_edges = build_edges_df(epic.tracking.graph, df_nodes)
@@ -155,7 +180,12 @@ def build_nx_digraph(epic) -> nx.DiGraph:
 
 
 def build_props_metadata() -> Dict[str, geff_spec.PropMetadata]:
-    """Build GEFF properties metadata."""
+    """
+    Build GEFF properties metadata.
+
+    Returns:
+        dict: mapping from property names to their metadata
+    """
     md_x = geff_spec.PropMetadata(
         identifier="x",
         dtype="int",
@@ -199,7 +229,12 @@ def build_props_metadata() -> Dict[str, geff_spec.PropMetadata]:
 
 
 def build_geff_metadata(epic):
-    """Build GEFF metadata."""
+    """
+    Build GEFF metadata.
+
+    Args:
+        epic: EpiCure instance with metadata information
+    """
     axes = [
         geff_spec.Axis(
             name="x",
@@ -247,8 +282,13 @@ def build_geff_metadata(epic):
 
 
 def save_geff(epic, outname):
-    """Save a GEFF file."""
+    """
+    Save EpiCure tracking data as a GEFF file.
 
+    Args:
+        epic: EpiCure instance with tracking data and graph
+        outname: path to save the GEFF file
+    """
     geff_graph = build_nx_digraph(epic)
     geff_md = build_geff_metadata(epic)
 
