@@ -1,3 +1,4 @@
+import os
 from typing import Dict, List
 
 import geff
@@ -5,10 +6,10 @@ import geff_spec
 import networkx as nx
 import numpy as np
 import pandas as pd
-import os
 from scipy.cluster.hierarchy import DisjointSet
 
 import epicure.Utils as ut
+
 
 def create_label_to_track_mapping(
     divisions: Dict[int, List[int]], unique_labels: List[int]
@@ -56,6 +57,7 @@ def build_nodes_df(
 
     # Generate and assign track IDs.
     labels = list(df["label"].unique())
+    print(f"Nb labels: {len(labels)}")
     label_to_track_id = create_label_to_track_mapping(divisions, labels)
     df["track_id"] = df["label"].map(label_to_track_id)
 
@@ -67,8 +69,10 @@ def build_edges_df(divisions: Dict[int, List[int]], df_nodes: pd.DataFrame):
     if divisions is not None:
         for daughter, mothers in divisions.items():
             if len(mothers) > 1:
-                ut.show_error(f"Merge event detected. Label {daughter} "
-                              f"has the following mother labels: {mothers}.")
+                ut.show_error(
+                    f"Merge event detected. Label {daughter} "
+                    f"has the following mother labels: {mothers}."
+                )
     # TODO: does GEFF support merge events?
 
     # Division edges: for each daughter-mother pair, create an edge.
@@ -138,9 +142,12 @@ def build_nx_digraph(epic) -> nx.DiGraph:
     df_nodes = build_nodes_df(epic.tracking.track_data, epic.tracking.graph)
     df_edges = build_edges_df(epic.tracking.graph, df_nodes)
 
-    graph = nx.from_pandas_edgelist(
-        df_edges, source="in_id", target="out_id", create_using=nx.DiGraph
-    )
+    graph = nx.DiGraph()
+    for _, row in df_nodes.iterrows():
+        graph.add_node(row["node_id"], **row.to_dict())
+    for _, edge in df_edges.iterrows():
+        graph.add_edge(edge["in_id"], edge["out_id"])
+
     node_attrs = {row["node_id"]: row.to_dict() for _, row in df_nodes.iterrows()}
     nx.set_node_attributes(graph, node_attrs)
 
