@@ -1212,6 +1212,12 @@ class Outputing(QWidget):
     
     def save_geff( self ):
         """ Save current segmentation and tracking in GEFF format """
+        ## save the label segmentation if it's not saved
+        labelname = os.path.join( self.epicure.outdir, self.epicure.imgname + "_labels.tif" )
+        ut.writeTif( self.epicure.seg, labelname, self.epicure.epi_metadata["ScaleXY"], "float32", what="Segmentation" )
+        ## then export the GEFF file
+        if self.epicure.tracking.graph is None:
+            self.epicure.tracking.graph = {}
         outname = os.path.join( self.epicure.outdir, self.epicure.imgname+".geff" )
         save_geff( self.epicure, outname )
         if self.epicure.verbose > 0:

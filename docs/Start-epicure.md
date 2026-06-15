@@ -4,6 +4,8 @@
 EpiCure handles several inputs format through the `bioio` module.
 However, if some format is not correctly recongized/handled by EpiCure, you can open the images in Napari with any other plugin (for example [napari-bioformats](https://github.com/tlambert03/napari-bioformats), [napari-aicsimageio](https://github.com/AllenCellModeling/napari-aicsimageio)) and use the `Start from open layers` option (see more [here](#start-from-opened-layers)).
 
+You can load your raw movie and the associated segmentation within EpiCure plugin (see [loading the movie](#loading-the-movies)) or open before the two files in napari and then start EpiCure from this opened layers (see [starting from opened layers](#start-from-opened-layers)).
+
 ## Loading the movies
 
 In the `Start EpiCure` step, you have a dedicated interface in the right part of the main interface.
@@ -12,20 +14,14 @@ In the `Start EpiCure` step, you have a dedicated interface in the right part of
 The first file to choose is the movie containing the epithelial staining, with the `image file` parameter. 
 It should be _2D(+time/channels) file_. 3D is not handled. If a file has a Z dimension and no temporal dimension, EpiCure will swap them and use the Z axis as time.  
 
+Once you have selected the raw movie, the plugin will take you to the next step of selecting the movie metadata and the segmentation/tracking file.
+
+### Movie metadata
+
+#### Chanel choice
 If the file contains several chanels, the plugin should detect it and show the `junction_chanel` parameter, to choose the chanel that contains the junction staining. The plugin will display only this chanel. If you wish to also see the other chanels, use the option `show other chanels` in the [advanced parameters](#advanced-parameters) panel.
 
-### Segmentation/Tracks
-The second file is the segmentation or tracks of this movie (it should only contain the segmentation), to select with the `segmentation file` parameter. It can be a binarized file of the junctions (skeletonized), a labelled file (each cell is filled by a unique number), or a TrackMate `.xml` file.
-
-If it is a TrackMate file, the tracks and the divisions will be loaded directly from it.
-
-_Note that if you haven't done the segmentation yet, there's an [additional option](./Segment-option.md) in EpiCure to directly run [EpySeg](https://github.com/baigouy/EPySeg) on the loaded movie._ 
-
-If the input movie file had already been processed with EpiCure previously (and saved), EpiCure will **automatically propose to load the saved file** and reload the previous parameters. You can directly click `START CURE` in this case.
-
-![start interface](./imgs/starting.png)
-
-## Movie metadata
+#### Image metadata
 The information of pixel size in xy dimensions and of temporal resolution can be set with the scaling parameters:
 `scale xy` (the size of one pixel in the corresponding unit), `unit_xy` (which unit, usually `µm`), `timeframe` (the temporal resolution at which the movie is acquired) and `unit_t` (which unit for the temporal resolution).
 
@@ -34,6 +30,21 @@ These scaling information is then used to display the movie with the correct siz
 Since version 1.3 of EpiCure, files are loaded with the [bioio](https://github.com/bioio-devs/bioio) python library, to support several formats.
 EpiCure reads the metadata of the input file with this library and fill the value of the scaling parameters of the interface. 
 Depending on python/module versions and the input file itself, all the information might not be correctly extracted, so we recommend to check these values to be sure that the movie will be properly scaled in EpiCure.
+
+### Segmentation/Tracks
+The second file is the segmentation or tracks of this movie (it should only contain the segmentation), to select with the `segmentation` parameters. 
+There are currently 4 main options:
+- `segmentation_file`: It can be a binarized file of the junctions (skeletonized), a labelled file (each cell is filled by a unique number)
+- `TrackMate file`: Choose a TrackMate `.xml` file that contains the segmentation and tracking information of your raw movie.
+The tracks and the divisions will be loaded directly from it.
+- `GEFF folder`: Choose a `.geff` folder that contains the tracking information and a link to the segmentation information of your raw movie.
+- `Segment now with Epyseg`: if you haven't done the segmentation yet, there's an [additional option](./Segment-option.md) in EpiCure to directly run [EpySeg](https://github.com/baigouy/EPySeg) on the loaded movie. 
+
+
+If the input movie file had already been processed with EpiCure previously (and saved), EpiCure will **automatically propose to load the saved file** in the `segmentation_file` parameter and reload the previous parameters. You can directly click `START CURE` in this case.
+
+![start interface](./imgs/starting.png)
+
 
 ## Advanced parameters
 

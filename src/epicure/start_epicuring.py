@@ -325,6 +325,7 @@ def gui_files( raw_movie=None, raw_movie_path="", segmented=None ):
     
     set_visibility()
     get_files.call_button.enabled = False
+    get_files.junction_chanel.visible = False
     ## load movie if there is a path but nothing loaded yet
     if (raw_movie is None) and (raw_movie_path is not None):
         load_movie( raw_movie_path )
@@ -333,7 +334,6 @@ def gui_files( raw_movie=None, raw_movie_path="", segmented=None ):
         show_metatdata(show=True)
         if segmented is not None:
             get_files.call_button.enabled = True
-    get_files.junction_chanel.visible = False
     get_files.advanced_parameters.clicked.connect(set_visibility)
     get_files.show_other_chanels.clicked.connect(show_others)
     get_files.junction_chanel.changed.connect(set_chanel)
