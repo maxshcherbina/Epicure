@@ -11,11 +11,13 @@ You can choose which cells to analyse/export with the `Apply on` option in the i
 
 ---
 
-## Export to TrackMate
+## Save As
+
+### Export to TrackMate
 
 The corrected segmentation/tracking can be exported as a [TrackMate](https://imagej.net/plugins/trackmate/) `.xml` file that can be directly loadded into TrackMate in Fiji as for any other TrackMate file.
 
-Select the option `Save as TrackMate XMl` and click on the `Save as TrackMate XML` to create this file. 
+Select the option `Save as...` and click on the `Save as TrackMate XML` to create this file. 
 Segmentation, tracking and divisions will be exported in the correct TrackMate format.
 
 You can then load it in `Fiji` with `TrackMate>Load a TrackMate file` and selecting the created `imagename.xml` file in `epics` folder. Don't move it or the input image to be sure that TrackMate will load them correctly.
@@ -24,6 +26,18 @@ You can then load it in `Fiji` with `TrackMate>Load a TrackMate file` and select
 
 !!! warning "Image with swapped Z and T"
 	In some cases, the image dimensions are not correctly set, and the temporal dimension is set as a Z-axis dimension. EpiCure should handle this case and print a warning on opening this image, but if you load the file with TrackMate from the exported `.xml` it's possible that the image dimensions will be uncorrect. In that case, all the segmentations will be overlaid on the first image. Then in Fiji you should swap them to have a temporal axis (`frames`) and not a Z axis (`slices`). 
+
+### Export as GEFF
+
+To export the tracking data in a format compatible with most tracking tool, you can use the export as GEFF option.
+[GEFF](https://github.com/live-image-tracking-tools/geff) (Graph Exchange File Format) is a specification for tracking data format, integrated in most bioimage analysis tracking tools.
+
+Select the option `Save as...` and click on the `Save as GEFF` to create this folder. 
+Tracking and divisions will be exported in the correct GEFF format.
+The segmentation information is included in the `imagename_labels.tif` that is saved in EpiCure in the `epics` folder.
+The GEFF output folder, also placed in the `epics` folder should stay in the same place as this label images to keep the segmentation information.
+
+GEFF folder can be imported in EpiCure in the starting interface by selected the GEFF folder linked to the raw movie in the starting interface line dedicated to GEFF segmentations.
 
 ---
 
