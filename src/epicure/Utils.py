@@ -279,15 +279,25 @@ def remove_layer(viewer, layname):
 
 def remove_widget(viewer, widname):
     """ Remove a widget from the viewer """
-    if widname in viewer.window._dock_widgets:
-        wid = viewer.window._dock_widgets[widname]
-        wid.setDisabled(True)
-        try:
-            wid.disconnect()
-        except Exception:
-            pass
-        del viewer.window._dock_widgets[widname]
-        wid.destroyOnClose()
+    if version_napari_above( "0.6.6" ):
+        if widname in viewer.window.dock_widgets:
+            import magicgui
+            wid = viewer.window.dock_widgets[widname]
+            if type(wid) is magicgui.widgets._function_gui.FunctionGui:
+                viewer.window.remove_dock_widget( wid.native.parent() )
+            else:
+                viewer.window.remove_dock_widget[ wid.parent() ]
+            del wid
+    else:
+        if widname in viewer.window._dock_widgets:
+            wid = viewer.window._dock_widgets[widname]
+            wid.setDisabled(True)
+            try:
+                wid.disconnect()
+            except Exception:
+                pass
+            del viewer.window._dock_widgets[widname]
+            wid.destroyOnClose()
 
 def remove_all_widgets( viewer ):
     """ Remove all widgets """

@@ -85,6 +85,7 @@ def choose_movie():
         selected_movie()
     
     wid = viewer.window.add_dock_widget( get_movie, name="ChooseMovie" )
+    #wid = viewer.window.dock_widgets["ChooseMovie"].native.parent()
     get_movie.raw_movie.changed.connect(selected_movie)
     return wid
 
