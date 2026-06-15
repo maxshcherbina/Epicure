@@ -112,13 +112,14 @@ def build_edges_df(divisions: Dict[int, List[int]], df_nodes: pd.DataFrame):
     # Now we can map between df_nodes and df_edges.
     # The in_id is the node ID of the matching label that is a mother,
     # and the out_id is the node ID of the matching label that is a daughter.
-    df_edges["in_id"] = df_edges["mother"].map(
-        df_nodes[df_nodes["mother"]].set_index("label")["node_id"]
-    )
-    df_edges["out_id"] = df_edges["daughter"].map(
-        df_nodes[df_nodes["daughter"]].set_index("label")["node_id"]
-    )
-    df_nodes.drop(columns=["daughter", "mother"], inplace=True)
+    if "mother" in df_edges:
+        df_edges["in_id"] = df_edges["mother"].map(
+            df_nodes[df_nodes["mother"]].set_index("label")["node_id"]
+        )
+        df_edges["out_id"] = df_edges["daughter"].map(
+            df_nodes[df_nodes["daughter"]].set_index("label")["node_id"]
+        )
+        df_nodes.drop(columns=["daughter", "mother"], inplace=True)
 
     # Non-division edges: for each label, connect consecutive nodes within that label.
     non_division_edges = []
