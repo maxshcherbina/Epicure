@@ -4,6 +4,8 @@
 EpiCure handles several inputs format through the `bioio` module.
 However, if some format is not correctly recongized/handled by EpiCure, you can open the images in Napari with any other plugin (for example [napari-bioformats](https://github.com/tlambert03/napari-bioformats), [napari-aicsimageio](https://github.com/AllenCellModeling/napari-aicsimageio)) and use the `Start from open layers` option (see more [here](#start-from-opened-layers)).
 
+You can load your raw movie and the associated segmentation within EpiCure plugin (see [loading the movie](#loading-the-movies)) or open before the two files in napari and then start EpiCure from this opened layers (see [starting from opened layers](#start-from-opened-layers)).
+
 ## Loading the movies
 
 In the `Start EpiCure` step, you have a dedicated interface in the right part of the main interface.
