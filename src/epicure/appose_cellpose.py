@@ -31,10 +31,12 @@ diameter = parameters.get("diameter", None)          # None = no diameter rescal
 flow_threshold = parameters.get("flow_threshold", 0.4)
 cellprob_threshold = parameters.get("cellprob_threshold", 0.0)
 min_size = parameters.get("min_size", 30)
+model_name = parameters.get("model", "cpsam")
 
-# cellpose 4.x: bare CellposeModel defaults to the newest cellpose-SAM model
-# (cpsam in 4.0.x, cpsam_v2 in 4.2.x -- the pinned env uses 4.2.1.1).
-model = models.CellposeModel(gpu=use_gpu)
+# cellpose 4.x is SAM-only: the classic models.Cellpose class + cyto/nuclei models were
+# removed. Valid pretrained_model values are the SAM family (cpsam, cpsam_v2, cpdino,
+# cpdino-vitb). Older cyto3-style models would need a separate cellpose 3.x environment.
+model = models.CellposeModel(gpu=use_gpu, pretrained_model=model_name)
 
 nframes = data.shape[0]
 for i in range(nframes):
@@ -46,9 +48,9 @@ for i in range(nframes):
         flow_threshold=flow_threshold,
         cellprob_threshold=cellprob_threshold,
         min_size=min_size,
-    )   # cpsam returns (masks, flows, styles) -- no channels arg for SAM
+    )   # SAM eval returns (masks, flows, styles); masks are res[0]
     out[i] = res[0].astype(np.uint32)
-    task.update(message=f"Cellpose segmented frame {i + 1}/{nframes}")
+    task.update(message=f"Cellpose ({model_name}) segmented frame {i + 1}/{nframes}")
 '''
 
 def go_cellpose(image, parameters, progress_bar=None, logger=None):
