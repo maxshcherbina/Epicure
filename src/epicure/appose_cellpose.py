@@ -53,6 +53,21 @@ for i in range(nframes):
     task.update(message=f"Cellpose ({model_name}) segmented frame {i + 1}/{nframes}")
 '''
 
+def refine_to_membrane(image, labels, sigma=1.0):
+    """Snap cellpose label boundaries onto the membrane ridge with a seeded watershed
+    that flows on the membrane intensity (per 2D frame). Cellpose's boundaries sit on
+    the cytosol edge and, once gaps are closed geometrically, look flat; feeding the
+    cellpose labels as watershed seeds and letting the boundary settle on the bright
+    membrane gives tiled, membrane-faithful junctions. Cell count is preserved (every
+    input label stays a seed). Runs on the host (epicure env has scikit-image)."""
+    from skimage.segmentation import watershed
+    from skimage.filters import gaussian
+    refined = np.zeros_like(labels)
+    for i in range(labels.shape[0]):
+        land = gaussian(image[i].astype("float32"), sigma=sigma)
+        refined[i] = watershed(land, markers=labels[i]).astype(labels.dtype)
+    return refined
+
 def go_cellpose(image, parameters, progress_bar=None, logger=None):
     """Install a python environment with cellpose if necessary (via appose+pixi) and
     run cellpose-SAM slice-by-slice on the (T, Y, X) image within that environment.
@@ -87,7 +102,11 @@ def go_cellpose(image, parameters, progress_bar=None, logger=None):
                 ## napari progress object would not be JSON-serializable across appose.)
                 _logger.info("Start cellpose segmentation in appose service task..")
                 task.wait_for()
-                return shared_labels.ndarray().copy()
+                labels = shared_labels.ndarray().copy()
+            if parameters.get("refine_membrane", False):
+                _logger.info("Snapping boundaries to the membrane (seeded watershed)..")
+                labels = refine_to_membrane(image, labels, sigma=parameters.get("refine_sigma", 1.0))
+            return labels
         except Exception as e:
             raise RuntimeError("Running cellpose in separated environment failed") from e
         finally:

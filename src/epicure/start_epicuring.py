@@ -107,6 +107,7 @@ def gui_files( raw_movie=None, raw_movie_path="", segmented=None ):
             get_files.segment_with_epyseg.visible = False
             get_files.segment_with_cellpose.visible = False
             get_files.cellpose_model.visible = False
+            get_files.cellpose_refine.visible = False
         advanced_visibility()
 
     def advanced_visibility():
@@ -135,6 +136,7 @@ def gui_files( raw_movie=None, raw_movie_path="", segmented=None ):
             get_files.segment_with_epyseg.visible = True
             get_files.segment_with_cellpose.visible = True
             get_files.cellpose_model.visible = True
+            get_files.cellpose_refine.visible = True
         else:
             get_files.segmentation_file.visible = False
             get_files.trackmate_file.visible = False
@@ -142,7 +144,8 @@ def gui_files( raw_movie=None, raw_movie_path="", segmented=None ):
             get_files.segment_with_epyseg.visible = False
             get_files.segment_with_cellpose.visible = False
             get_files.cellpose_model.visible = False
-        
+            get_files.cellpose_refine.visible = False
+
         labname = Epic.suggest_segfile( get_files.output_dirname.value )
         Epic.set_names( get_files.output_dirname.value )
         if labname is not None:
@@ -192,6 +195,7 @@ def gui_files( raw_movie=None, raw_movie_path="", segmented=None ):
         get_files.segment_with_epyseg.visible = True
         get_files.segment_with_cellpose.visible = True
         get_files.cellpose_model.visible = True
+        get_files.cellpose_refine.visible = True
         get_files.allow_gaps.value = bool(Epic.epi_metadata["Allow gaps"])
         get_files.verbose_level.value = int(Epic.epi_metadata["Verbose"])
         if "MainChannel" in Epic.epi_metadata:
@@ -256,8 +260,9 @@ def gui_files( raw_movie=None, raw_movie_path="", segmented=None ):
     def launch_cellpose():
         """ Run cellpose-SAM slice-by-slice on the intensity channel movie (isolated env) """
         model_name = get_files.cellpose_model.value
-        print(f"Running Cellpose (model '{model_name}') with default parameters on the movie, 2D slice-by-slice.")
-        parameters = {"gpu":True, "model":model_name, "diameter":None, "flow_threshold":0.4, "cellprob_threshold":0.0, "min_size":30}
+        refine = get_files.cellpose_refine.value
+        print(f"Running Cellpose (model '{model_name}', refine_membrane={refine}) on the movie, 2D slice-by-slice.")
+        parameters = {"gpu":True, "model":model_name, "refine_membrane":refine, "diameter":None, "flow_threshold":0.4, "cellprob_threshold":0.0, "min_size":30}
         ut.show_progress( viewer, True )
         progress_bar = progress( len(Epic.img) )
         progress_bar.set_description( "Running cellpose on all frames..." )
@@ -295,6 +300,7 @@ def gui_files( raw_movie=None, raw_movie_path="", segmented=None ):
         get_files.segmentation_file.value = segname
         get_files.segment_with_cellpose.visible = False
         get_files.cellpose_model.visible = False
+        get_files.cellpose_refine.visible = False
 
 
     @magicgui(call_button="START CURE",
@@ -313,6 +319,7 @@ def gui_files( raw_movie=None, raw_movie_path="", segmented=None ):
             segment_with_epyseg = {"widget_type": "PushButton", "label": "Segment now with EpySeg"},
             _______ = {"widget_type": "Label"},
             cellpose_model = {"widget_type": "ComboBox", "choices": ["cpsam", "cpsam_v2", "cpdino", "cpdino-vitb"], "label": "Cellpose model"},
+            cellpose_refine = {"widget_type": "CheckBox", "label": "Snap boundaries to membrane"},
             segment_with_cellpose = {"widget_type": "PushButton", "label": "Segment now with Cellpose"},
             ________ = {"widget_type": "Label"},
             junction_half_thickness={"widget_type": "LiteralEvalLineEdit"},
@@ -338,6 +345,7 @@ def gui_files( raw_movie=None, raw_movie_path="", segmented=None ):
                    segment_with_epyseg = False,
                    _______ = "OR \t\t\t",
                    cellpose_model = "cpsam",
+                   cellpose_refine = False,
                    segment_with_cellpose = False,
                    ________ = "\n",
                    advanced_parameters = False,
