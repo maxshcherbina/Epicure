@@ -47,9 +47,18 @@ docs page are in scope**.
 
 ## Decisions so far
 
-<!-- one line per closed ticket; empty at charting time -->
+<!-- one line per closed ticket -->
 
-_(none yet — charting session)_
+- **R1 — cellpose-SAM call pinned** — `models.CellposeModel(gpu=True)` (v4 default =
+  `cpsam`), then per-2D-frame `model.eval(frame_f32, diameter=None, normalize=True,
+  flow_threshold=0.4, cellprob_threshold=0.0, min_size=30)` → `(masks, flows, styles)`;
+  NO `channels` arg for SAM; masks→uint32. Validated against installed cellpose 4.0.8 on
+  a synthetic 2-frame movie (found all cells, correct shape/dtype).
+- **D2 — separate pixi workspace + cache-aligned pins** — `resources/pixi_cellpose.toml`
+  (own workspace, not the TF/numpy<2 epyseg env). Deps as `[pypi-dependencies]` so
+  pixi/uv reuse `~/.cache/uv`. Pinned cellpose==4.2.1.1, torch==2.11.0, torchvision==0.26.0
+  (cp310, cache-aligned). **torch (200MB+) and cpsam weights (1.1GB) are already cached**
+  — no big download. Caveat feeding T1 below.
 
 ## Not yet specified (fog, in scope, graduates later)
 
@@ -72,7 +81,7 @@ _(none yet — charting session)_
 Frontier at charting time (open + unblocked): **R1** only.
 
 ### R1 — Extract & pin the cellpose-SAM 2D-per-frame call `[research]`
-- **status:** open (frontier)
+- **status:** CLOSED (see Decisions so far)
 - **blocked-by:** —
 - **blocks:** D2, T2, T3
 - **Question:** From the local working code (`dapiVolumeCalc/worker_cellpose.py`,
@@ -83,7 +92,7 @@ Frontier at charting time (open + unblocked): **R1** only.
   version + default param set the rest of the map builds on.
 
 ### D2 — pixi env design that reuses local caches (no re-download) `[decision]`
-- **status:** blocked
+- **status:** CLOSED (see Decisions so far). Artifact: `resources/pixi_cellpose.toml`.
 - **blocked-by:** R1
 - **blocks:** T1
 - **Question:** Design the cellpose pixi environment: python version (3.10, like EpySeg),
@@ -93,23 +102,30 @@ Frontier at charting time (open + unblocked): **R1** only.
   resolution plan avoids fresh multi-GB downloads.
 
 ### T1 — Build the cellpose pixi env on M4 `[task]`
-- **status:** blocked
+- **status:** BLOCKED ON USER (bandwidth decision) — awaiting steer.
 - **blocked-by:** D2
-- **blocks:** T2, T4
-- **Question:** Add the cellpose env to `src/epicure/resources/pixi.toml` (or a sibling
-  spec) and confirm `appose.pixi(...).environment(...).build()` actually builds on Mac
-  arm64 reusing caches, with no large download. This is the slow/risky ticket.
+- **blocks:** T4
+- **Finding:** torch 2.11.0 + torchvision 0.26.0 + cpsam weights are **cache-resident**
+  (no big pull). But on py3.10 the small compiled deps (numpy, scipy, fastremap,
+  fill-voids, imagecodecs) are cached only for cp311/cp313 in `~/.cache/uv`, so a clean
+  `pixi install` would still pull **~40MB** (scipy ~25MB the largest). No single python
+  version has everything cached (cache is a cross-project grab-bag). Options for the user:
+  (a) accept the ~40MB one-time build now; (b) defer the pixi build to a networked
+  machine / later and keep the toml as the shippable artifact, validating the cellpose
+  logic locally against `cellpose_napari/.venv` (already done for the inner loop).
 
 ### T2 — Write `appose_cellpose.py` runner `[task]`
-- **status:** blocked
+- **status:** DONE (pending Codex review + a real appose run in T4).
+  Artifact: `src/epicure/appose_cellpose.py`. Inner cellpose loop validated against real
+  cellpose 4.0.8. Key deviation from epyseg: a **separate uint32 output buffer** (input is
+  uint8/uint16, labels need uint32) rather than reusing the input shared-memory buffer.
 - **blocked-by:** R1, T1
 - **blocks:** T3, T4
-- **Question:** Mirror `appose_epyseg.py`: pass the movie via shared memory, run cellpose
-  slice-by-slice in the isolated subprocess, return an int label stack. Expose a
-  `go_cellpose(image, parameters, ...)` matching the EpySeg signature.
 
 ### T3 — Wire the "Segment with cellpose" UI button `[task]`
-- **status:** blocked
+- **status:** DONE (pending GUI verify in T4). `start_epicuring.py`: `segment_with_cellpose`
+  PushButton + `launch_cellpose()` handler + signal + 5 visibility toggles, mirroring
+  EpySeg; writes `..._cellpose.tif` (uint16) into `segmentation_file`. Syntax-compiles.
 - **blocked-by:** R1, T2
 - **blocks:** T4, T5
 - **Question:** In `start_epicuring.py`, add a `segment_with_cellpose` PushButton +
