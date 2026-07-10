@@ -9,6 +9,9 @@ platforms = ["osx-arm64", "osx-64", "linux-64", "win-64"]
 [dependencies]
 python = "==3.10"
 pip = "*"
+# torch 2.11 requires setuptools<82; pin here so the conda base doesn't inject a
+# newer setuptools that makes the pypi (torch) solve unsatisfiable.
+setuptools = ">=65,<82"
 
 [pypi-dependencies]
 # Pinned to versions present in the local uv wheel cache (cp310) so pixi/uv reuse
