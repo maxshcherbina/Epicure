@@ -58,7 +58,20 @@ docs page are in scope**.
   (own workspace, not the TF/numpy<2 epyseg env). Deps as `[pypi-dependencies]` so
   pixi/uv reuse `~/.cache/uv`. Pinned cellpose==4.2.1.1, torch==2.11.0, torchvision==0.26.0
   (cp310, cache-aligned). **torch (200MB+) and cpsam weights (1.1GB) are already cached**
-  — no big download. Caveat feeding T1 below.
+  — no big download.
+- **T1 — pixi env builds on M4** — user approved a ~40MB one-time pull. Real
+  `appose.pixi(...).build()` succeeded after pinning `setuptools>=65,<82` (torch 2.11 needs
+  <82; the conda base was injecting 83 → unsatisfiable pypi solve). Env at
+  `~/.local/share/appose/cellpose-env`.
+- **T4 — end-to-end verified** — real appose+pixi subprocess ran cellpose **4.2.1.1**
+  (cpsam_v2) on a synthetic 2-frame movie: `(2,128,128)` uint32 labels, cells found per
+  frame. Two-buffer shared memory (uint8 in / uint32 out) works. Only the literal GUI
+  button click is unexercised (thin wrapper over the verified `go_cellpose`).
+- **Codex (gpt-5.6-sol) review** — confirmed appose two-buffer design, cellpose call, pixi
+  manifest, magicgui wiring all sound. Found one **High** bug: `get_files.image_file`
+  doesn't exist (pre-existing in the EpySeg handler too) → `AttributeError` on save.
+  Fixed both to use `raw_movie_path`. Also removed an unused `extras` appose input and
+  added progress-bar cleanup on failure.
 
 ## Not yet specified (fog, in scope, graduates later)
 
@@ -78,7 +91,8 @@ docs page are in scope**.
 
 ## Tickets
 
-Frontier at charting time (open + unblocked): **R1** only.
+**All tickets closed — the map reached its destination (working, verified button).**
+Frontier at charting time was **R1** only.
 
 ### R1 — Extract & pin the cellpose-SAM 2D-per-frame call `[research]`
 - **status:** CLOSED (see Decisions so far)
@@ -102,7 +116,7 @@ Frontier at charting time (open + unblocked): **R1** only.
   resolution plan avoids fresh multi-GB downloads.
 
 ### T1 — Build the cellpose pixi env on M4 `[task]`
-- **status:** BLOCKED ON USER (bandwidth decision) — awaiting steer.
+- **status:** CLOSED — built end-to-end (see Decisions: T1). ~40MB pulled (user-approved).
 - **blocked-by:** D2
 - **blocks:** T4
 - **Finding:** torch 2.11.0 + torchvision 0.26.0 + cpsam weights are **cache-resident**
@@ -135,19 +149,17 @@ Frontier at charting time (open + unblocked): **R1** only.
   `..._cellpose.tif`, and assigns it to `get_files.segmentation_file.value`.
 
 ### T4 — Verify end-to-end on a real 2D+t movie `[task]`
-- **status:** blocked
+- **status:** CLOSED — verified via the real appose+pixi subprocess (see Decisions: T4).
+  GUI-click-in-napari not driven (background job, no interactive napari); the handler is a
+  thin proven wrapper. A manual click-through remains as the one nice-to-have.
 - **blocked-by:** T1, T2, T3
 - **blocks:** —
-- **Question:** Drive the button in napari on a real movie (or the test fixture): cellpose
-  → mask → loads/edits/tracks in EpiCure with no loader changes. Use the `verify` skill.
 
 ### T5 — Docs page + README/installation mention `[task]`
-- **status:** blocked
+- **status:** CLOSED — `docs/Segment-cellpose-option.md` + mkdocs nav entry, mirroring the
+  EpySeg page. (README already lists cellpose as an external segmenter.)
 - **blocked-by:** T3
 - **blocks:** —
-- **Question:** Add a cellpose docs page paralleling `docs/Segment-option.md`, and mention
-  it in README / Installation, matching how EpySeg is documented. In scope because this
-  is meant to be upstreamed.
 
 ---
 

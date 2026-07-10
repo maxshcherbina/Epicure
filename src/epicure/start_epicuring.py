@@ -244,7 +244,7 @@ def gui_files( raw_movie=None, raw_movie_path="", segmented=None ):
             print(e)
             return
         ut.show_progress( viewer, False )
-        segname = str(get_files.image_file.value)+"_epyseg.tif"
+        segname = str(raw_movie_path)+"_epyseg.tif"
         ut.writeTif( segres, segname, 1.0, "uint8", what="Epyseg results saved in " )
         get_files.segmentation_file.value = segname
         get_files.segment_with_epyseg.visible = False
@@ -276,11 +276,14 @@ def gui_files( raw_movie=None, raw_movie_path="", segmented=None ):
             logger = setup_logger()
             segres = go_cellpose( Epic.img, parameters, progress_bar=None, logger=logger )
         except Exception as e:
+            progress_bar.close()
+            ut.show_progress( viewer, False )
             ut.show_error( "This option requires cellpose in an isolated environment and failed to run.\nCheck the console for details." )
             print(e)
             return
+        progress_bar.close()
         ut.show_progress( viewer, False )
-        segname = str(get_files.image_file.value)+"_cellpose.tif"
+        segname = str(raw_movie_path)+"_cellpose.tif"
         ## ponytail: uint16 label stack -- ceiling 65535 cells/frame (epithelia are far
         ## below); bump to uint32 in writeTif if a frame ever exceeds that.
         ut.writeTif( segres, segname, 1.0, "uint16", what="Cellpose results saved in " )

@@ -27,12 +27,13 @@ data = image.ndarray()            # (T, Y, X), single channel
 out = labels.ndarray()            # (T, Y, X), uint32 -- filled in place
 
 use_gpu = parameters.get("gpu", True)
-diameter = parameters.get("diameter", None)          # None = auto
+diameter = parameters.get("diameter", None)          # None = no diameter rescaling
 flow_threshold = parameters.get("flow_threshold", 0.4)
 cellprob_threshold = parameters.get("cellprob_threshold", 0.0)
 min_size = parameters.get("min_size", 30)
 
-# cellpose 4.x: bare CellposeModel defaults to pretrained_model="cpsam" (cellpose-SAM).
+# cellpose 4.x: bare CellposeModel defaults to the newest cellpose-SAM model
+# (cpsam in 4.0.x, cpsam_v2 in 4.2.x -- the pinned env uses 4.2.1.1).
 model = models.CellposeModel(gpu=use_gpu)
 
 nframes = data.shape[0]
@@ -80,7 +81,8 @@ def go_cellpose(image, parameters, progress_bar=None, logger=None):
                 task.inputs["image"] = shared_image
                 task.inputs["labels"] = shared_labels
                 task.inputs["parameters"] = parameters
-                task.inputs["extras"] = {"logger_name": _logger.name, "logger_level": _logger.level, "progress_bar": progress_bar}
+                ## (no "extras" input: the script reports progress via task.update, and a
+                ## napari progress object would not be JSON-serializable across appose.)
                 _logger.info("Start cellpose segmentation in appose service task..")
                 task.wait_for()
                 return shared_labels.ndarray().copy()
