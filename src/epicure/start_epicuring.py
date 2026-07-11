@@ -318,7 +318,7 @@ def gui_files( raw_movie=None, raw_movie_path="", segmented=None ):
             ______ = {"widget_type": "Label" },
             segment_with_epyseg = {"widget_type": "PushButton", "label": "Segment now with EpySeg"},
             _______ = {"widget_type": "Label"},
-            cellpose_model = {"widget_type": "ComboBox", "choices": ["cpsam", "cpsam_v2", "cpdino", "cpdino-vitb"], "label": "Cellpose model"},
+            cellpose_model = {"widget_type": "ComboBox", "choices": ["cpsam", "cpsam_v2"], "label": "Cellpose model"},
             cellpose_refine = {"widget_type": "CheckBox", "label": "Snap boundaries to membrane"},
             segment_with_cellpose = {"widget_type": "PushButton", "label": "Segment now with Cellpose"},
             ________ = {"widget_type": "Label"},
