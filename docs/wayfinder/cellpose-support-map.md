@@ -67,18 +67,62 @@ docs page are in scope**.
   (cpsam_v2) on a synthetic 2-frame movie: `(2,128,128)` uint32 labels, cells found per
   frame. Two-buffer shared memory (uint8 in / uint32 out) works. Only the literal GUI
   button click is unexercised (thin wrapper over the verified `go_cellpose`).
-- **Codex (gpt-5.6-sol) review** — confirmed appose two-buffer design, cellpose call, pixi
+- **Codex (gpt-5.6-sol) review #1** — confirmed appose two-buffer design, cellpose call, pixi
   manifest, magicgui wiring all sound. Found one **High** bug: `get_files.image_file`
   doesn't exist (pre-existing in the EpySeg handler too) → `AttributeError` on save.
   Fixed both to use `raw_movie_path`. Also removed an unused `extras` appose input and
   added progress-bar cleanup on failure.
+- **GUI verified in real napari** — user ran the button in a live napari session; it
+  segmented all 101 frames of `small_crop23-123_8bit.tif` and saved
+  `<movie>_cellpose.tif`. Closes the "GUI click not driven" gap from T4.
+- **Model dropdown (E1)** — added a `cellpose_model` ComboBox: **`cpsam` / `cpsam_v2`**.
+  cellpose 4.x is SAM-only (`models.Cellpose` + cyto/nuclei removed); dispatch is
+  `CellposeModel(pretrained_model=...)`. `cpdino`/`cpdino-vitb` are in `MODEL_NAMES` but
+  need the DINOv3 package the env doesn't ship → removed (Codex review #2). "cellpose 3"
+  (cyto3) needs a separate cellpose-3.x env → follow-up.
+- **Membrane-snap refinement (E2)** — optional "Snap boundaries to membrane" checkbox.
+  Host-side seeded watershed (`refine_to_membrane`, uses epicure's skimage) flowing on the
+  membrane intensity, cellpose labels as seeds. It **grows** the cells to tile the frame
+  (fills cellpose's background gaps) AND lands boundaries on the bright membrane, following
+  its curvature — image-based, unlike flat geometric `expand_labels`. Preserves cell count.
+  Off by default (raw cellpose labels otherwise).
+- **Representation decision** — **filled labels are the right output for EpiCure**, not a
+  thin junction mesh. EpiCure is label-based (it skeletonizes+fills any junction input via
+  `junctions_to_label`), so cellpose labels feed it with zero conversion; a mesh would be a
+  lossy round-trip. On-screen line thickness is napari's Labels `contour` setting, not data.
+- **UI fix** — after segmenting, `hide_segment_options()` collapses the whole "generate a
+  segmentation" block (both buttons + cellpose widgets + "OR" separators) so no dangling
+  "OR" is left behind.
+- **Codex reviews #2 & #3** — all findings triaged/fixed: cpdino removed, py3.9 classifier
+  removed, refine guarded on empty/single-cell frames, CUDA doc claim corrected. Remaining
+  low findings (uint16 save, dtype edge cases) judged safe for real cellpose per-frame data.
+
+## Findings (research this session, not code)
+
+- **Benchmark vs EpySeg** (101-frame movie): cellpose-SAM 223s (2.2s/frame, ~175 cells) vs
+  EpySeg 256s (2.5s/frame, ~183). Tracking (EpiCure overlap): cellpose far cleaner — 1208
+  vs 2690 tracks, mean length 14.6 vs 6.8 frames. Cellpose wins detection/counting/tracking.
+- **Membrane accuracy** (membrane-marker data): cellpose puts boundaries ~15% below the
+  membrane peak (cytosol edge); EpySeg sits on the membrane. The E2 watershed recovers most
+  of it (boundary-on-membrane 83→108–121). For pure junction fidelity EpySeg is still the
+  baseline; cellpose+E2 is competitive.
+- **CAREamics denoise (N2V2)** — retrained on the movie, visually excellent. But: it does
+  **not** change cellpose detection/counts, and (tested on frames 60–75) **does not** help
+  cellpose capture a division. Its value is boundary/noise quality, **not** division capture
+  or detection. → not worth wiring into the button for divisions.
+- **Divisions** — cellpose is a whole-cell detector; it keeps a dividing cell as one label
+  until cytokinesis fully closes the wall, so forming divisions aren't segmented as two
+  daughters (denoise doesn't fix this). Divisions in EpiCure are semi-manual: split the cell
+  in Edit, then the tracker links daughters. Splitting-cutoff semantics: cost is
+  `dist²/max_distance²`, cutoff is `splitting_cost²`, so **0.2 → only ~6px → 0 divisions**;
+  use **~0.4–0.5** (~12–15px) for real mitoses. Not a plugin gap.
 
 ## Not yet specified (fog, in scope, graduates later)
 
-- **Model-selection dropdown** in the button UI (choose among cellpose models). Default
-  to newest (cpsam) for now; graduates once T3 works with a single fixed model.
-- **CUDA / Windows / Linux env variant + testing.** Structure it now, test later when
-  a CUDA machine is available.
+- **cellpose-3.x second env (cyto3 & the classic/denoising models)** — a separate
+  `pixi_cellpose3.toml` + env, routed by model choice, since cellpose 4.x can't load them.
+- **Real CUDA env** — the Linux/Windows feature is currently a stub resolving to CPU torch;
+  configure a genuine CUDA PyTorch target + test on a GPU box.
 - **Custom / user-trained model loading.**
 - Multi-channel movie handling beyond the default channel mapping.
 
@@ -86,13 +130,21 @@ docs page are in scope**.
 
 - **3D cellpose (`do_3D`)** — user chose 2D slice-by-slice.
 - **Removing or replacing the EpySeg feature** — cellpose is purely additive.
+- **Thin junction-mesh / skeleton output** — decided filled labels are the right EpiCure
+  input; a mesh would be a lossy round-trip. Only relevant for analysis *outside* EpiCure.
+- **CAREamics denoise integrated as a button pre-step** — tested negative for divisions and
+  neutral for detection; a boundary-quality nicety only, not worth the added weight now.
+- **Automated division detection** — cellpose can't catch the furrow moment; needs manual
+  correction or a mitosis-specific detector, a separate tool from this button.
 
 ---
 
 ## Tickets
 
-**All tickets closed — the map reached its destination (working, verified button).**
-Frontier at charting time was **R1** only.
+**All tickets closed — the map reached its destination (working, verified button),** plus
+an in-session expansion (model dropdown E1, membrane-snap E2, UI fix, 3 Codex reviews) all
+captured under "Decisions so far" / "Findings" above. Frontier at charting time was **R1**
+only. Remaining fog (cyto3 env, real CUDA) is tracked under "Not yet specified".
 
 ### R1 — Extract & pin the cellpose-SAM 2D-per-frame call `[research]`
 - **status:** CLOSED (see Decisions so far)
@@ -149,9 +201,9 @@ Frontier at charting time was **R1** only.
   `..._cellpose.tif`, and assigns it to `get_files.segmentation_file.value`.
 
 ### T4 — Verify end-to-end on a real 2D+t movie `[task]`
-- **status:** CLOSED — verified via the real appose+pixi subprocess (see Decisions: T4).
-  GUI-click-in-napari not driven (background job, no interactive napari); the handler is a
-  thin proven wrapper. A manual click-through remains as the one nice-to-have.
+- **status:** CLOSED — verified two ways: (1) the real appose+pixi subprocess on a synthetic
+  movie, and (2) **the user ran the button in a live napari session** on the 101-frame movie,
+  which segmented all frames and saved the file. Fully exercised.
 - **blocked-by:** T1, T2, T3
 - **blocks:** —
 
