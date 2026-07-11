@@ -110,6 +110,16 @@ docs page are in scope**.
   **not** change cellpose detection/counts, and (tested on frames 60–75) **does not** help
   cellpose capture a division. Its value is boundary/noise quality, **not** division capture
   or detection. → not worth wiring into the button for divisions.
+  - **Controlled denoise vs cellprob comparison (frames 10/50/90, N2V2 retrained on this
+    movie, boundary scored on the RAW membrane):** counts identical to raw (159/152–3/230),
+    reconfirming denoise doesn't change detection. Boundary-on-membrane benefit is **narrow
+    and redundant with lowering `cellprob`**: it appears only at low-density frame 10 at the
+    default cellprob=0 (90.5→102.2), which is the *same* gain that `cellprob=-1` buys on the
+    raw image (101.2); on denser frames 50/90 denoise is neutral-to-slightly-worse, and once
+    cellprob is lowered the raw image matches or beats denoised everywhere (f10 cp=-2: raw
+    108.1 vs denoised 106.9). → **Denoise still not worth adding as a cellpose pre-step:** its
+    one boundary win is obtained for free by `cellprob=-1` on the raw image, with no extra
+    training/env/per-frame inference. Membrane-snap (E2) remains the stronger boundary lever.
 - **Divisions** — cellpose is a whole-cell detector; it keeps a dividing cell as one label
   until cytokinesis fully closes the wall, so forming divisions aren't segmented as two
   daughters (denoise doesn't fix this). Divisions in EpiCure are semi-manual: split the cell
