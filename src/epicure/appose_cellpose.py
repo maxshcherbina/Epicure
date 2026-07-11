@@ -64,6 +64,13 @@ def refine_to_membrane(image, labels, sigma=1.0):
     from skimage.filters import gaussian
     refined = np.zeros_like(labels)
     for i in range(labels.shape[0]):
+        # Nothing to refine on empty or single-cell frames (watershed would just claim the
+        # whole frame for that one label); leave them untouched. Note: on multi-cell frames
+        # the watershed has no foreground mask, so cells tile the entire field -- intended
+        # for epithelia that fill the frame, not for sparse cells on a large background.
+        if len(np.unique(labels[i])) < 3:
+            refined[i] = labels[i]
+            continue
         land = gaussian(image[i].astype("float32"), sigma=sigma)
         refined[i] = watershed(land, markers=labels[i]).astype(labels.dtype)
     return refined
