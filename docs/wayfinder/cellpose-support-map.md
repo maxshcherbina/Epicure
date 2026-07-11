@@ -116,6 +116,24 @@ docs page are in scope**.
   in Edit, then the tracker links daughters. Splitting-cutoff semantics: cost is
   `dist²/max_distance²`, cutoff is `splitting_cost²`, so **0.2 → only ~6px → 0 divisions**;
   use **~0.4–0.5** (~12–15px) for real mitoses. Not a plugin gap.
+- **Cellpose eval-param sweep (frames 10/50/90, cpsam, cellpose 4.0.8)** — swept
+  `cellprob_threshold` ∈ [−2..+2], `flow_threshold` {0.4,0.6}, `diameter` {None,20,30},
+  `min_size` {30,60,100}, plus an invert probe. **Verdict: defaults are near-optimal;
+  detection count is nearly invariant to every param.** Counts held at ~158 (f10) / ~153
+  (f50) / ~231 (f90) across the whole grid. `min_size` 30→100 barely moved counts (SAM
+  produces no sub-30px fragments to filter), `diameter` and `flow` are no-ops (SAM is
+  scale-invariant), image inversion gained only +2–5 cells / +2 bnd. **The one lever with
+  any effect is `cellprob_threshold`, and it is a boundary-quality lever, not a count
+  lever:** lowering it 0→−1→−2 grows masks slightly *outward onto the bright membrane* at
+  constant count, raising boundary-on-membrane (f10 90→101→108; f50 95→97→98; f90 97→100).
+  Confirmed visually (frame-50 crop) — no overshoot, no merges, but the shift is small and
+  the default boundaries already track the membrane well. So: (a) no eval-param setting
+  changes detection/count — if cellpose over/under-counts vs truth, tuning won't fix it,
+  it's a model property; (b) a global default of `cellprob=-1` is a near-zero-risk, free
+  small boundary gain, but the **membrane-snap checkbox (E2) remains the stronger boundary
+  lever** (bnd 108–121). **Caveat: this is cpsam; the button ships cpsam_v2 (4.2.1.1 env,
+  now deleted). `cpsam_v2` is NOT a distinct model in 4.0.8 (silently falls back to default
+  cpsam). Revalidate on cpsam_v2 before changing any button default.**
 
 ## Not yet specified (fog, in scope, graduates later)
 
