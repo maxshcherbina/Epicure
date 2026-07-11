@@ -100,14 +100,21 @@ def gui_files( raw_movie=None, raw_movie_path="", segmented=None ):
     cval = 0
     ncpus = int(multiprocessing.cpu_count()*0.5)
 
+    def hide_segment_options():
+        """ Collapse the whole 'generate a segmentation' block (both buttons, the cellpose
+        options and their 'OR' separators) once a segmentation is present, so no dangling
+        'OR' or half-empty section is left behind. """
+        for w in ( get_files.______, get_files.segment_with_epyseg,
+                   get_files._______, get_files.cellpose_model,
+                   get_files.cellpose_refine, get_files.segment_with_cellpose,
+                   get_files.________ ):
+            w.visible = False
+
     def set_visibility():
         """ Visibility of the parameters in the GUI """
         if segmented is not None:
             get_files.segmentation_file.visible = False
-            get_files.segment_with_epyseg.visible = False
-            get_files.segment_with_cellpose.visible = False
-            get_files.cellpose_model.visible = False
-            get_files.cellpose_refine.visible = False
+            hide_segment_options()
         advanced_visibility()
 
     def advanced_visibility():
@@ -255,7 +262,7 @@ def gui_files( raw_movie=None, raw_movie_path="", segmented=None ):
         segname = str(raw_movie_path)+"_epyseg.tif"
         ut.writeTif( segres, segname, 1.0, "uint8", what="Epyseg results saved in " )
         get_files.segmentation_file.value = segname
-        get_files.segment_with_epyseg.visible = False
+        hide_segment_options()
 
     def launch_cellpose():
         """ Run cellpose-SAM slice-by-slice on the intensity channel movie (isolated env) """
@@ -298,9 +305,7 @@ def gui_files( raw_movie=None, raw_movie_path="", segmented=None ):
         ## below); bump to uint32 in writeTif if a frame ever exceeds that.
         ut.writeTif( segres, segname, 1.0, "uint16", what="Cellpose results saved in " )
         get_files.segmentation_file.value = segname
-        get_files.segment_with_cellpose.visible = False
-        get_files.cellpose_model.visible = False
-        get_files.cellpose_refine.visible = False
+        hide_segment_options()
 
 
     @magicgui(call_button="START CURE",
