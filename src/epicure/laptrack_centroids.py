@@ -30,6 +30,7 @@ class LaptrackCentroids():
         self.merging_cost = 1
         self.penal_area = 0
         self.penal_solidity = 0
+        self.gap_frames = 1   # gap-closing: bridge a cell missing up to gap_frames-1 frames
         self.track = track
         self.epicure = epic
         self.inspecting = False
@@ -40,16 +41,22 @@ class LaptrackCentroids():
 
         if self.version_over:
             self.lt = LapTrack( metric=self.tracking_metric,
-                                cutoff=1, 
-                                splitting_metric=self.tracking_nofeat_metric, 
-                                splitting_cutoff=self.splitting_cost, 
+                                cutoff=1,
+                                gap_closing_metric=self.tracking_nofeat_metric,
+                                gap_closing_cutoff=1,
+                                gap_closing_max_frame_count=self.gap_frames,
+                                splitting_metric=self.tracking_nofeat_metric,
+                                splitting_cutoff=self.splitting_cost,
                                 merging_metric=self.tracking_nofeat_metric,
                                 merging_cutoff=self.merging_cost, )
         else:
             self.lt = LapTrack( track_dist_metric=self.tracking_metric,
-                                track_cost_cutoff=1, 
-                                splitting_dist_metric=self.tracking_nofeat_metric, 
-                                splitting_cost_cutoff=self.splitting_cost, 
+                                track_cost_cutoff=1,
+                                gap_closing_dist_metric=self.tracking_nofeat_metric,
+                                gap_closing_cost_cutoff=1,
+                                gap_closing_max_frame_count=self.gap_frames,
+                                splitting_dist_metric=self.tracking_nofeat_metric,
+                                splitting_cost_cutoff=self.splitting_cost,
                                 merging_dist_metric=self.tracking_nofeat_metric,
                                 merging_cost_cutoff=self.merging_cost, )
         
@@ -123,6 +130,8 @@ class LaptrackCentroids():
             self.lt.merging_cutoff = merg_cost
         else:
             self.lt.merging_cost_cutoff = merg_cost
+        ## apply gap-closing frame count at track time (lt was built in __init__)
+        self.lt.gap_closing_max_frame_count = self.gap_frames
         track_df, split_df, merge_df = self.lt.predict_dataframe(
             regionprops_df,
             coordinate_cols=self.region_properties,

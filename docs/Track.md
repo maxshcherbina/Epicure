@@ -53,6 +53,13 @@ With both options, it's also possible to take into account the size or the shape
 This will improve the tracking when the cell is similar from one frame to another so it will increase the capacity of the algorithm to "recognize" the cell.
 This can be done by checking the `add feature cost` in the interface.
 
+### Gap-closing
+A cell can briefly disappear from the segmentation for a few frames (a missed detection, or a cell moving out of focus) and then reappear. Without gap-closing this breaks the cell's track in two. The `Gap-closing frames` option lets Laptrack bridge such a gap, linking the cell across the missing frames so it keeps a single track.
+
+The value sets how large a gap to bridge: a cell absent for up to (value − 1) frames keeps its track, so `1` disables gap-closing. A bridged track still has no label in the skipped frames, so it is still reported as a gap in the [Inspect](./Inspect.md) panel.
+
+This option is available with the Laptrack centroids method.
+
 ### Drift correction
 This option allows to take into account local drift in the tracking algorithm.
 When there is a fast local movement of all cells in the same direction, the algorithm is more likely to fail as the distance between the cell centroids or their overlaps will be higher than the distance/overlap with another cell. 
