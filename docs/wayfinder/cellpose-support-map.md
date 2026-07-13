@@ -144,6 +144,21 @@ docs page are in scope**.
   lever** (bnd 108–121). **Caveat: this is cpsam; the button ships cpsam_v2 (4.2.1.1 env,
   now deleted). `cpsam_v2` is NOT a distinct model in 4.0.8 (silently falls back to default
   cpsam). Revalidate on cpsam_v2 before changing any button default.**
+- **TrackAstra tracker trial (new thread, standalone test — NOT integrated)** — deep-learning
+  association tracker (`weigertlab/trackastra`, `general_2d`), run on the cellpose masks of
+  `small_crop23-123_8bit.tif`. **Verdict: worth integrating, mainly for DIVISIONS.** Border-removed,
+  apples-to-apples: divisions **83 vs Laptrack ~0** (the decisive win), lineages 310 vs 406 (~24%
+  less fragmented), track length **comparable** (span mean 33 vs 30, median 19 both) — not the
+  dramatic gain first (wrongly) reported. Division geometry valid (median mother→daughter 16.5px).
+  Traps: `model.track()` masks are **not** persistent ids — relabel via `graph_to_ctc`; `clear_border`
+  is too aggressive (174→121 cells/frame), use a 1px-border trim; TrackAstra **cannot fix bad
+  segmentation** (tested: won't bridge a 1–2 frame dropout, won't split a merged mask). The user's
+  frame-50 "division issue" = false divisions from transient membrane merge→split + border artifacts
+  in the SEGMENTATION, not a tracker fault. EpiCure loads the labels TIFF but not the lineage CSV, so
+  divisions don't render → integration needed. **Full verdict + numbers: bead `cellpose-support-evx`
+  (closed spike). Integration work: bead `cellpose-support-4hz`.** Scripts: `/Users/max/Documents/1python/trackastra_test/`.
+  Next trial queued: **ultrack** (`royerlab/ultrack`) — tracks under segmentation *uncertainty*
+  (multiple candidate segmentations), a different angle that could fix the transient merge/split.
 
 ## Not yet specified (fog, in scope, graduates later)
 
