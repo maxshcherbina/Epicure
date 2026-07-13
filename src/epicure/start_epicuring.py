@@ -100,11 +100,21 @@ def gui_files( raw_movie=None, raw_movie_path="", segmented=None ):
     cval = 0
     ncpus = int(multiprocessing.cpu_count()*0.5)
 
+    def hide_segment_options():
+        """ Collapse the whole 'generate a segmentation' block (both buttons, the cellpose
+        options and their 'OR' separators) once a segmentation is present, so no dangling
+        'OR' or half-empty section is left behind. """
+        for w in ( get_files.______, get_files.segment_with_epyseg,
+                   get_files._______, get_files.cellpose_model,
+                   get_files.cellpose_refine, get_files.segment_with_cellpose,
+                   get_files.________ ):
+            w.visible = False
+
     def set_visibility():
         """ Visibility of the parameters in the GUI """
         if segmented is not None:
             get_files.segmentation_file.visible = False
-            get_files.segment_with_epyseg.visible = False
+            hide_segment_options()
         advanced_visibility()
 
     def advanced_visibility():
@@ -131,12 +141,18 @@ def gui_files( raw_movie=None, raw_movie_path="", segmented=None ):
             get_files.segmentation_file.visible = True
             get_files.segmentation_file.value = pathlib.Path(imgdir)
             get_files.segment_with_epyseg.visible = True
+            get_files.segment_with_cellpose.visible = True
+            get_files.cellpose_model.visible = True
+            get_files.cellpose_refine.visible = True
         else:
             get_files.segmentation_file.visible = False
             get_files.trackmate_file.visible = False
             get_files.geff_file.visible = False
             get_files.segment_with_epyseg.visible = False
-        
+            get_files.segment_with_cellpose.visible = False
+            get_files.cellpose_model.visible = False
+            get_files.cellpose_refine.visible = False
+
         labname = Epic.suggest_segfile( get_files.output_dirname.value )
         Epic.set_names( get_files.output_dirname.value )
         if labname is not None:
@@ -184,6 +200,9 @@ def gui_files( raw_movie=None, raw_movie_path="", segmented=None ):
             set_chanel()
         show_metatdata(show=True)
         get_files.segment_with_epyseg.visible = True
+        get_files.segment_with_cellpose.visible = True
+        get_files.cellpose_model.visible = True
+        get_files.cellpose_refine.visible = True
         get_files.allow_gaps.value = bool(Epic.epi_metadata["Allow gaps"])
         get_files.verbose_level.value = int(Epic.epi_metadata["Verbose"])
         if "MainChannel" in Epic.epi_metadata:
@@ -240,10 +259,53 @@ def gui_files( raw_movie=None, raw_movie_path="", segmented=None ):
             print(e)
             return
         ut.show_progress( viewer, False )
-        segname = str(get_files.image_file.value)+"_epyseg.tif"
+        segname = str(raw_movie_path)+"_epyseg.tif"
         ut.writeTif( segres, segname, 1.0, "uint8", what="Epyseg results saved in " )
         get_files.segmentation_file.value = segname
-        get_files.segment_with_epyseg.visible = False
+        hide_segment_options()
+
+    def launch_cellpose():
+        """ Run cellpose-SAM slice-by-slice on the intensity channel movie (isolated env) """
+        model_name = get_files.cellpose_model.value
+        refine = get_files.cellpose_refine.value
+        print(f"Running Cellpose (model '{model_name}', refine_membrane={refine}) on the movie, 2D slice-by-slice.")
+        parameters = {"gpu":True, "model":model_name, "refine_membrane":refine, "diameter":None, "flow_threshold":0.4, "cellprob_threshold":0.0, "min_size":30}
+        ut.show_progress( viewer, True )
+        progress_bar = progress( len(Epic.img) )
+        progress_bar.set_description( "Running cellpose on all frames..." )
+        progress_bar.update(0)
+        try:
+            from epicure.appose_cellpose import go_cellpose
+            class LogHandler(logging.Handler):
+                def emit(self, record):
+                    msg = self.format(record)
+                    progress_bar.set_description( msg )
+
+            def setup_logger( name="cellpose_seg" ):
+                logger = logging.getLogger(name)
+                handler = LogHandler()
+                formatter = logging.Formatter('[EpiCure] %(message)s')
+                handler.setFormatter( formatter )
+                logger.addHandler(handler)
+                logger.setLevel( logging.INFO )
+                return logger
+
+            logger = setup_logger()
+            segres = go_cellpose( Epic.img, parameters, progress_bar=None, logger=logger )
+        except Exception as e:
+            progress_bar.close()
+            ut.show_progress( viewer, False )
+            ut.show_error( "This option requires cellpose in an isolated environment and failed to run.\nCheck the console for details." )
+            print(e)
+            return
+        progress_bar.close()
+        ut.show_progress( viewer, False )
+        segname = str(raw_movie_path)+"_cellpose.tif"
+        ## ponytail: uint16 label stack -- ceiling 65535 cells/frame (epithelia are far
+        ## below); bump to uint32 in writeTif if a frame ever exceeds that.
+        ut.writeTif( segres, segname, 1.0, "uint16", what="Cellpose results saved in " )
+        get_files.segmentation_file.value = segname
+        hide_segment_options()
 
 
     @magicgui(call_button="START CURE",
@@ -260,6 +322,10 @@ def gui_files( raw_movie=None, raw_movie_path="", segmented=None ):
             geff_file ={"widget_type": "FileEdit", "mode": "d", "label": "GEFF folder"}, 
             ______ = {"widget_type": "Label" },
             segment_with_epyseg = {"widget_type": "PushButton", "label": "Segment now with EpySeg"},
+            _______ = {"widget_type": "Label"},
+            cellpose_model = {"widget_type": "ComboBox", "choices": ["cpsam", "cpsam_v2"], "label": "Cellpose model"},
+            cellpose_refine = {"widget_type": "CheckBox", "label": "Snap boundaries to membrane"},
+            segment_with_cellpose = {"widget_type": "PushButton", "label": "Segment now with Cellpose"},
             ________ = {"widget_type": "Label"},
             junction_half_thickness={"widget_type": "LiteralEvalLineEdit"},
             nbparallel_threads = {"widget_type": "LiteralEvalLineEdit"},
@@ -282,6 +348,10 @@ def gui_files( raw_movie=None, raw_movie_path="", segmented=None ):
                    geff_file = pathlib.Path(cdir),
                    ______ = "OR \t\t\t",
                    segment_with_epyseg = False,
+                   _______ = "OR \t\t\t",
+                   cellpose_model = "cpsam",
+                   cellpose_refine = False,
+                   segment_with_cellpose = False,
                    ________ = "\n",
                    advanced_parameters = False,
                    show_other_chanels = True,
@@ -338,6 +408,7 @@ def gui_files( raw_movie=None, raw_movie_path="", segmented=None ):
     get_files.show_other_chanels.clicked.connect(show_others)
     get_files.junction_chanel.changed.connect(set_chanel)
     get_files.segment_with_epyseg.clicked.connect( launch_napari_epyseg )
+    get_files.segment_with_cellpose.clicked.connect( launch_cellpose )
     get_files.go_help.clicked.connect( show_documentation )
     return get_files, Epic
 
