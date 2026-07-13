@@ -1100,6 +1100,9 @@ class Tracking(QWidget):
         ## merging ~ error ?
         mcost, self.merging_cost = wid.value_line( "Merging cutoff", "0", "Weight to merge to labels together" )
         glap_layout.addLayout(mcost)
+        ## gap-closing ~ bridge brief segmentation dropouts so a track survives them
+        gframe, self.gap_frames_line = wid.value_line( "Gap-closing frames", "5", "Bridge a cell that vanishes for up to (n-1) frames before its track breaks (1 = off)" )
+        glap_layout.addLayout(gframe)
 
         add_feat, self.check_penalties, self.bpenalties = wid.checkgroup_help( "Add features cost", True, "Add cell features in the tracking calculation", None )
         self.create_penalties()
@@ -1155,6 +1158,7 @@ class Tracking(QWidget):
         laptrack.max_distance = float(self.max_dist.text())
         laptrack.splitting_cost = float(self.splitting_cost.text())
         laptrack.merging_cost = float(self.merging_cost.text())
+        laptrack.gap_frames = int(float(self.gap_frames_line.text()))
         self.region_properties = ["label", "centroid"]
         if self.check_penalties.isChecked():
             self.region_properties.append("area")
