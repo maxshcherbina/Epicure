@@ -1455,6 +1455,9 @@ class EpiCure:
     def updates_after_tracking(self):
         """When tracking has been done, update events, others"""
         self.inspecting.get_divisions()
+        self.inspecting.review_tracking_decisions(
+            self.tracking.tracking_method_metadata
+        )
 
     #######################
     ## Classified cells options

@@ -350,6 +350,13 @@ def test_trackastra_runs_through_normal_action_with_divisions_and_singletons(
     tracking.start_frame.setValue(1)
     tracking.end_frame.setValue(2)
     epic.editing.border_size.setText("1")
+    epic.inspecting.add_event((0, 0, 8), 80, "human-classified", force=True)
+    epic.inspecting.add_event(
+        (0, 0, 8), 80, "trackastra-division-review", force=True
+    )
+    epic.inspecting.add_event(
+        (1, 2, 2), 10, "trackastra-division-review", force=True
+    )
 
     tracking.do_tracking()
 
@@ -370,6 +377,15 @@ def test_trackastra_runs_through_normal_action_with_divisions_and_singletons(
     assert len(tracking.tracking_method_metadata["trackastra_associations"]) == 2
     assert len(tracking.tracking_method_metadata["trackastra_divisions"]) == 1
     assert tracking.tracking_method_metadata["gap_repairs"] == ()
+    assert tracking.tracking_method_metadata["division_reviews"][0]["suspicious"]
+    assert epic.inspecting.nb_type("division") == 1
+    review_ids = epic.inspecting.get_events_from_type("trackastra-division-review")
+    review_frames = sorted(
+        int(epic.inspecting.events.data[epic.inspecting.index_from_id(event_id)][0])
+        for event_id in review_ids
+    )
+    assert review_frames == [0, 2]
+    assert epic.inspecting.nb_type("human-classified") == 1
     np.testing.assert_array_equal(tracking.track_data, tracking.tracklayer.data)
 
 
@@ -409,6 +425,50 @@ def test_trackastra_gap_repair_joins_tracklets_and_keeps_review_provenance(
     assert proposal.labels[0, 2, 2] == proposal.labels[3, 3, 2]
     assert proposal.metadata["gap_repairs"][0]["provenance"] == "LapTrack-gap"
     assert proposal.metadata["gap_repairs"][0]["missing_frames"] == 2
+
+
+def test_inspect_queues_only_suspicious_gap_repairs_inside_the_tracking_range(
+    make_napari_viewer, tmp_path
+):
+    epic = _synthetic_epicure(make_napari_viewer, tmp_path)
+    tracking = epic.tracking
+    tracking.graph = {20: [30], 31: [30]}
+    graph_before = tracking.graph.copy()
+    epic.inspecting.add_event((0, 0, 8), 80, "laptrack-gap-review", force=True)
+    epic.inspecting.add_event((1, 2, 2), 10, "laptrack-gap-review", force=True)
+    epic.inspecting.add_event((0, 0, 8), 80, "human-classified", force=True)
+    metadata = {
+        "method": "TrackAstra",
+        "range": (1, 2),
+        "division_reviews": (),
+        "gap_repairs": (
+            {
+                "target": (2, 20),
+                "target_y": 6.5,
+                "target_x": 2.5,
+                "area_ratio": 2.01,
+                "distance_per_frame": 1.0,
+            },
+            {
+                "target": (2, 31),
+                "target_y": 5.5,
+                "target_x": 5.5,
+                "area_ratio": 1.0,
+                "distance_per_frame": 15.01,
+            },
+        ),
+    }
+
+    epic.inspecting.review_tracking_decisions(metadata)
+
+    review_ids = epic.inspecting.get_events_from_type("laptrack-gap-review")
+    review_frames = sorted(
+        int(epic.inspecting.events.data[epic.inspecting.index_from_id(event_id)][0])
+        for event_id in review_ids
+    )
+    assert review_frames == [0, 2, 2]
+    assert epic.inspecting.nb_type("human-classified") == 1
+    assert tracking.graph == graph_before
 
 
 def test_trackastra_gap_pass_uses_shared_laptrack_gap_setting(

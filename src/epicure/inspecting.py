@@ -786,7 +786,7 @@ class Inspecting(QWidget):
         """ Decrease by one score of event at index ind. Delete it if reach 0"""
         score = self.events.properties["score"]
         score.flags.writeable = True
-        score[ind] = score[ind] - 1
+        score[ind] = max(0, int(score[ind]) - 1)
         if self.events.properties["score"][ind] == 0:
             self.exonerate_one( ind, remove_division=False )
             self.update_nevents_display()
@@ -1498,6 +1498,66 @@ class Inspecting(QWidget):
         self.show_hide_divisions()
         self.refresh_events()
 
+    def review_tracking_decisions(self, metadata):
+        """Replace range-local automatic review flags without touching user events."""
+        if metadata.get("method") != "TrackAstra":
+            return
+        start, end = metadata.get("range", (0, self.epicure.nframes - 1))
+        review_types = ("trackastra-division-review", "laptrack-gap-review")
+        for feature in review_types:
+            for frame in range(start, end + 1):
+                self.reset_event_type(feature, frame)
+
+        for review in metadata.get("division_reviews", ()):
+            if not review.get("suspicious"):
+                continue
+            parent_frame, _parent_label = review["parent"]
+            parent_id = int(
+                self.epicure.seg[
+                    parent_frame,
+                    int(round(review["parent_y"])),
+                    int(round(review["parent_x"])),
+                ]
+            )
+            if parent_id == 0:
+                continue
+            self.add_event(
+                (
+                    review["child_frame"],
+                    review["review_y"],
+                    review["review_x"],
+                ),
+                parent_id,
+                "trackastra-division-review",
+                force=True,
+                refresh=False,
+            )
+
+        for repair in metadata.get("gap_repairs", ()):
+            if not (
+                repair.get("area_ratio", 0) > 2.0
+                or repair.get("distance_per_frame", 0) > 15.0
+            ):
+                continue
+            target_frame, _target_label = repair["target"]
+            target_id = int(
+                self.epicure.seg[
+                    target_frame,
+                    int(round(repair["target_y"])),
+                    int(round(repair["target_x"])),
+                ]
+            )
+            if target_id == 0:
+                continue
+            self.add_event(
+                (target_frame, repair["target_y"], repair["target_x"]),
+                target_id,
+                "laptrack-gap-review",
+                force=True,
+                refresh=False,
+            )
+        self.refresh_events()
+
     def show_hide_events( self, i=None, eclass=None ):
         """ Update which type of events to show or hide """
         if i is None:
@@ -1712,4 +1772,3 @@ class Inspecting(QWidget):
                 rows["diff"] = rows["diff"].div(rows["smooth"])
                 if self.epicure.verbose > 2:
                     print(rows)
-

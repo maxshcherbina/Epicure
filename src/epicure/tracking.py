@@ -1287,6 +1287,59 @@ class Tracking(QWidget):
                 raise ValueError("TrackAstra detection is outside the selected range")
             proposed_labels[offset][source_labels[offset] == label] = track_id
 
+        detections_by_key = {
+            (detection.frame, detection.label): detection
+            for detection in result.detections
+        }
+        division_reviews = []
+        for division in result.divisions:
+            parent_key = (division.parent_frame, division.parent_label)
+            if parent_key not in division_parents:
+                continue
+            daughter_keys = (
+                (division.child_frame, division.child_a_label),
+                (division.child_frame, division.child_b_label),
+            )
+            parent_area = int(
+                np.count_nonzero(
+                    source_labels[division.parent_frame - start]
+                    == division.parent_label
+                )
+            )
+            daughter_area = sum(
+                int(
+                    np.count_nonzero(
+                        source_labels[frame - start] == label
+                    )
+                )
+                for frame, label in daughter_keys
+            )
+            area_ratio = (
+                max(parent_area, daughter_area) / min(parent_area, daughter_area)
+                if parent_area and daughter_area
+                else float("inf")
+            )
+            child_a = detections_by_key[daughter_keys[0]]
+            child_b = detections_by_key[daughter_keys[1]]
+            parent_detection = detections_by_key[parent_key]
+            minimum_score = min(
+                division.child_a_score, division.child_b_score
+            )
+            division_reviews.append(
+                {
+                    "parent": parent_key,
+                    "daughters": daughter_keys,
+                    "child_frame": division.child_frame,
+                    "minimum_score": minimum_score,
+                    "area_ratio": area_ratio,
+                    "parent_y": parent_detection.y,
+                    "parent_x": parent_detection.x,
+                    "review_y": (child_a.y + child_b.y) / 2,
+                    "review_x": (child_a.x + child_b.x) / 2,
+                    "suspicious": minimum_score < 0.9 or area_ratio > 1.5,
+                }
+            )
+
         return TrackingProposal(
             start_frame=start,
             end_frame=end,
@@ -1303,6 +1356,7 @@ class Tracking(QWidget):
                 "trackastra_divisions": tuple(
                     asdict(division) for division in result.divisions
                 ),
+                "division_reviews": tuple(division_reviews),
                 "gap_repairs": tuple(
                     asdict(repair)
                     for repair in gap_repairs
