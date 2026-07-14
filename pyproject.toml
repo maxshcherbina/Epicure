@@ -75,13 +75,14 @@ include-package-data = true
 # Explicitly list packages to include
 packages = [
     "epicure",
+    "epicure.resources",
 ]
 
 [tool.setuptools_scm]
 write_to = "src/epicure/_version.py"
 
 [tool.setuptools.package-data]
-"*" = ["*.yaml"]
+"*" = ["*.yaml", "*.toml"]
 
 [project.entry-points."napari.manifest"]
 epicure = "epicure:napari.yaml"
