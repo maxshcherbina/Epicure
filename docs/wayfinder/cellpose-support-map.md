@@ -56,9 +56,9 @@ docs page are in scope**.
   a synthetic 2-frame movie (found all cells, correct shape/dtype).
 - **D2 — separate pixi workspace + cache-aligned pins** — `resources/pixi_cellpose.toml`
   (own workspace, not the TF/numpy<2 epyseg env). Deps as `[pypi-dependencies]` so
-  pixi/uv reuse `~/.cache/uv`. Pinned cellpose==4.2.1.1, torch==2.11.0, torchvision==0.26.0
-  (cp310, cache-aligned). **torch (200MB+) and cpsam weights (1.1GB) are already cached**
-  — no big download.
+  pixi/uv reuse `~/.cache/uv`. Pinned cellpose==4.2.1.1, torch==2.11.0, torchvision==0.26.0,
+  and the pilot-qualified DINOv3 source revision. The worker now uses Python 3.11 because
+  that DINOv3 revision declares Python >=3.11.
 - **T1 — pixi env builds on M4** — user approved a ~40MB one-time pull. Real
   `appose.pixi(...).build()` succeeded after pinning `setuptools>=65,<82` (torch 2.11 needs
   <82; the conda base was injecting 83 → unsatisfiable pypi solve). Env at
@@ -75,11 +75,10 @@ docs page are in scope**.
 - **GUI verified in real napari** — user ran the button in a live napari session; it
   segmented all 101 frames of `small_crop23-123_8bit.tif` and saved
   `<movie>_cellpose.tif`. Closes the "GUI click not driven" gap from T4.
-- **Model dropdown (E1)** — added a `cellpose_model` ComboBox: **`cpsam` / `cpsam_v2`**.
-  cellpose 4.x is SAM-only (`models.Cellpose` + cyto/nuclei removed); dispatch is
-  `CellposeModel(pretrained_model=...)`. `cpdino`/`cpdino-vitb` are in `MODEL_NAMES` but
-  need the DINOv3 package the env doesn't ship → removed (Codex review #2). "cellpose 3"
-  (cyto3) needs a separate cellpose-3.x env → follow-up.
+- **Model dropdown (E1)** — the `cellpose_model` ComboBox offers **`cpsam` / `cpsam_v2` /
+  `cpdino-vitb`**. Dispatch is `CellposeModel(pretrained_model=...)`. DINO ViT-B was enabled
+  after the ARM64/MPS pilot proved the model and supplied an exact DINOv3 source pin.
+  "cellpose 3" (cyto3) still needs a separate cellpose-3.x environment → follow-up.
 - **Membrane-snap refinement (E2)** — optional "Snap boundaries to membrane" checkbox.
   Host-side seeded watershed (`refine_to_membrane`, uses epicure's skimage) flowing on the
   membrane intensity, cellpose labels as seeds. It **grows** the cells to tile the frame
@@ -93,9 +92,11 @@ docs page are in scope**.
 - **UI fix** — after segmenting, `hide_segment_options()` collapses the whole "generate a
   segmentation" block (both buttons + cellpose widgets + "OR" separators) so no dangling
   "OR" is left behind.
-- **Codex reviews #2 & #3** — all findings triaged/fixed: cpdino removed, py3.9 classifier
-  removed, refine guarded on empty/single-cell frames, CUDA doc claim corrected. Remaining
-  low findings (uint16 save, dtype edge cases) judged safe for real cellpose per-frame data.
+- **Codex reviews #2 & #3** — all original findings were triaged/fixed: the initially
+  unprovisioned DINO choices were removed, the py3.9 classifier was removed, refinement was
+  guarded on empty/single-cell frames, and the CUDA claim was corrected. DINO ViT-B was
+  later restored only after its dependency and ARM64/MPS path were qualified. Remaining low
+  findings (uint16 save, dtype edge cases) were judged safe for real per-frame data.
 
 ## Findings (research this session, not code)
 

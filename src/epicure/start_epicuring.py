@@ -10,6 +10,7 @@ from napari.utils.history import get_save_history, update_save_history
 from napari.utils import progress
 import pathlib, os
 import epicure.Utils as ut
+from epicure.appose_cellpose import CELLPOSE_DEFAULT_MODEL, CELLPOSE_MODELS
 from epicure.epicuring import EpiCure
 import multiprocessing
 import logging
@@ -265,7 +266,7 @@ def gui_files( raw_movie=None, raw_movie_path="", segmented=None ):
         hide_segment_options()
 
     def launch_cellpose():
-        """ Run cellpose-SAM slice-by-slice on the intensity channel movie (isolated env) """
+        """Run Cellpose 4 slice-by-slice on the intensity movie (isolated env)."""
         model_name = get_files.cellpose_model.value
         refine = get_files.cellpose_refine.value
         print(f"Running Cellpose (model '{model_name}', refine_membrane={refine}) on the movie, 2D slice-by-slice.")
@@ -323,7 +324,7 @@ def gui_files( raw_movie=None, raw_movie_path="", segmented=None ):
             ______ = {"widget_type": "Label" },
             segment_with_epyseg = {"widget_type": "PushButton", "label": "Segment now with EpySeg"},
             _______ = {"widget_type": "Label"},
-            cellpose_model = {"widget_type": "ComboBox", "choices": ["cpsam", "cpsam_v2"], "label": "Cellpose model"},
+            cellpose_model = {"widget_type": "ComboBox", "choices": CELLPOSE_MODELS, "label": "Cellpose model"},
             cellpose_refine = {"widget_type": "CheckBox", "label": "Snap boundaries to membrane"},
             segment_with_cellpose = {"widget_type": "PushButton", "label": "Segment now with Cellpose"},
             ________ = {"widget_type": "Label"},
@@ -349,7 +350,7 @@ def gui_files( raw_movie=None, raw_movie_path="", segmented=None ):
                    ______ = "OR \t\t\t",
                    segment_with_epyseg = False,
                    _______ = "OR \t\t\t",
-                   cellpose_model = "cpsam",
+                   cellpose_model = CELLPOSE_DEFAULT_MODEL,
                    cellpose_refine = False,
                    segment_with_cellpose = False,
                    ________ = "\n",
@@ -411,4 +412,3 @@ def gui_files( raw_movie=None, raw_movie_path="", segmented=None ):
     get_files.segment_with_cellpose.clicked.connect( launch_cellpose )
     get_files.go_help.clicked.connect( show_documentation )
     return get_files, Epic
-

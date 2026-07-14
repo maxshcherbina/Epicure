@@ -4,14 +4,19 @@ import logging
 from importlib import resources
 import platform
 
+
+CELLPOSE_MODELS = ("cpsam", "cpsam_v2", "cpdino-vitb")
+CELLPOSE_DEFAULT_MODEL = "cpsam"
+
+
 def share_as_ndarray(img: np.ndarray) -> appose.NDArray:
     """Copies a NumPy array into a same-sized newly allocated block of shared memory."""
     shared = appose.NDArray(str(img.dtype), img.shape)
     shared.ndarray()[:] = img
     return shared
 
-# Runs inside the isolated cellpose environment (see resources/pixi_cellpose.toml).
-# 2D slice-by-slice: cellpose-SAM is run once per time frame; labels are per-frame
+# Runs inside the isolated Cellpose environment (see resources/pixi_cellpose.toml).
+# 2D slice-by-slice: Cellpose 4 is run once per time frame; labels are per-frame
 # (EpiCure does the cross-frame tracking). Results go into a SEPARATE uint32 shared
 # buffer -- unlike epyseg we can't reuse the input buffer (input is uint8/uint16,
 # labels need uint32).
@@ -33,10 +38,11 @@ cellprob_threshold = parameters.get("cellprob_threshold", 0.0)
 min_size = parameters.get("min_size", 30)
 model_name = parameters.get("model", "cpsam")
 
-# cellpose 4.x is SAM-only: the classic models.Cellpose class + cyto/nuclei models were
-# removed. Valid pretrained_model values are the SAM family (cpsam, cpsam_v2, cpdino,
-# cpdino-vitb). Older cyto3-style models would need a separate cellpose 3.x environment.
+# Cellpose 4 removed the classic models.Cellpose class and cyto/nuclei models. Its
+# built-ins include the SAM and DINO families. Older cyto3-style models would need
+# a separate Cellpose 3 environment.
 model = models.CellposeModel(gpu=use_gpu, pretrained_model=model_name)
+task.update(message=f"Cellpose ({model_name}) initialized on {model.device}")
 
 nframes = data.shape[0]
 for i in range(nframes):
@@ -77,9 +83,16 @@ def refine_to_membrane(image, labels, sigma=1.0):
 
 def go_cellpose(image, parameters, progress_bar=None, logger=None):
     """Install a python environment with cellpose if necessary (via appose+pixi) and
-    run cellpose-SAM slice-by-slice on the (T, Y, X) image within that environment.
+    run the selected Cellpose 4 model slice-by-slice on the (T, Y, X) image.
     Returns a (T, Y, X) uint32 label stack."""
     _logger = logger or logging.getLogger(__name__)
+    model_name = parameters.get("model", CELLPOSE_DEFAULT_MODEL)
+    if model_name not in CELLPOSE_MODELS:
+        raise ValueError(
+            f"Unsupported Cellpose model {model_name!r}; "
+            f"choose one of {', '.join(CELLPOSE_MODELS)}."
+        )
+    parameters = {**parameters, "model": model_name}
     try:
         pixi_file = resources.files("epicure.resources").joinpath("pixi_cellpose.toml")
         _logger.info("Build/Load cellpose environment")
