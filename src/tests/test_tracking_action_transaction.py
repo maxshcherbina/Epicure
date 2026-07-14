@@ -1,6 +1,12 @@
 import numpy as np
 import pytest
 
+from epicure.appose_trackastra import (
+    Association,
+    Detection,
+    Division,
+    TrackAstraResult,
+)
 from epicure.epicuring import EpiCure
 from epicure.tracking_transaction import TrackingProposal
 
@@ -275,3 +281,83 @@ def test_laptrack_centroids_runs_through_the_range_safe_transaction(
     assert [conflict.kind for conflict in tracking.tracking_conflicts] == [
         "range-boundary-identity"
     ]
+
+
+def test_trackastra_selector_inhibits_drift_and_restores_laptrack_state(
+    make_napari_viewer, tmp_path
+):
+    epic = _synthetic_epicure(make_napari_viewer, tmp_path)
+    tracking = epic.tracking
+    tracking.drift_correction.setChecked(True)
+    tracking.drift_radius.setText("73")
+
+    assert tracking.track_choice.findText("TrackAstra") >= 0
+    tracking.track_choice.setCurrentText("TrackAstra")
+
+    assert not tracking.drift_correction.isChecked()
+    assert not tracking.drift_correction.isEnabled()
+    assert not tracking.drift_radius.isEnabled()
+    assert not tracking.gTrackAstra.isHidden()
+
+    tracking.track_choice.setCurrentText("Laptrack-Centroids")
+
+    assert tracking.drift_correction.isEnabled()
+    assert tracking.drift_radius.isEnabled()
+    assert tracking.drift_correction.isChecked()
+    assert tracking.drift_radius.text() == "73"
+
+
+def test_trackastra_runs_through_normal_action_with_divisions_and_singletons(
+    make_napari_viewer, tmp_path
+):
+    epic = _synthetic_epicure(make_napari_viewer, tmp_path)
+    tracking = epic.tracking
+    before = epic.seg.copy()
+    captured = {}
+
+    def fake_runner(movie, segmentations, *, start_frame, **_kwargs):
+        captured["movie"] = movie.copy()
+        captured["segmentations"] = segmentations.copy()
+        captured["start_frame"] = start_frame
+        return TrackAstraResult(
+            schema_version=1,
+            trackastra_version="0.5.3",
+            model="general_2d",
+            device="cpu",
+            detections=(
+                Detection(1, 10, 2.5, 2.5),
+                Detection(1, 30, 5.5, 5.5),
+                Detection(2, 20, 6.5, 2.5),
+                Detection(2, 31, 5.5, 5.5),
+            ),
+            associations=(
+                Association(1, 30, 2, 20, 0.91),
+                Association(1, 30, 2, 31, 0.97),
+            ),
+            divisions=(Division(1, 30, 2, 20, 31, 0.91, 0.97),),
+        )
+
+    tracking._trackastra_runner = fake_runner
+    tracking.track_choice.setCurrentText("TrackAstra")
+    tracking.frame_range.setChecked(True)
+    tracking.start_frame.setValue(1)
+    tracking.end_frame.setValue(2)
+    epic.editing.border_size.setText("1")
+
+    tracking.do_tracking()
+
+    assert captured["start_frame"] == 1
+    np.testing.assert_array_equal(captured["movie"], epic.img[1:3])
+    assert 90 not in captured["segmentations"]
+    assert 91 not in captured["segmentations"]
+    np.testing.assert_array_equal(epic.seg[0], before[0])
+    np.testing.assert_array_equal(epic.seg[3], before[3])
+    assert epic.seg[1, 2, 2] == 10  # unmatched detection restored as singleton
+    assert set(tracking.graph) == {20, 31}
+    assert tracking.graph[20] == [30]
+    assert tracking.graph[31] == [30]
+    assert tracking.tracking_method_metadata == {
+        "method": "TrackAstra",
+        "range": (1, 2),
+    }
+    np.testing.assert_array_equal(tracking.track_data, tracking.tracklayer.data)

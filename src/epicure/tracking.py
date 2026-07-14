@@ -11,7 +11,8 @@
 
 from copy import deepcopy
 
-from qtpy.QtWidgets import QVBoxLayout, QWidget # type: ignore
+from qtpy.QtWidgets import QLabel, QVBoxLayout, QWidget # type: ignore
+from epicure.appose_trackastra import TrackAstraResult, run_trackastra
 from epicure.laptrack_centroids import LaptrackCentroids
 from epicure.tracking_transaction import (
     TrackingProposal,
@@ -65,6 +66,7 @@ class Tracking(QWidget):
         self.correction_ledger = []
         self.tracking_method_metadata = {}
         self._tracking_methods = {}
+        self._trackastra_runner = run_trackastra
 
         layout = QVBoxLayout()
         
@@ -93,8 +95,14 @@ class Tracking(QWidget):
             self.split_cost = None
             self.merg_cost = None
 
+        self.track_choice.addItem("TrackAstra")
+        self.create_trackastra()
+        layout.addWidget(self.gTrackAstra)
+
         drift_layout, self.drift_correction, self.drift_radius = wid.check_value( check="With drift correction", checked=False, value=str(50), descr="Taking into account local drift in tracking calculations") 
         layout.addLayout( drift_layout )
+        self._laptrack_drift_checked = self.drift_correction.isChecked()
+        self._last_tracking_method = self.track_choice.currentText()
         
         self.track_go = wid.add_button( "Track", self.do_tracking, "Launch the tracking with the current parameter. Can take time" )
         layout.addWidget(self.track_go)
@@ -122,6 +130,7 @@ class Tracking(QWidget):
         self.register_tracking_method("Laptrack-Centroids", self.laptrack_centroids)
         if laptrack_over:
             self.register_tracking_method("Laptrack-Overlaps", self.laptrack_overlaps)
+        self.register_tracking_method("TrackAstra", self.trackastra)
         
 
     def show_frame_range( self ):
@@ -846,6 +855,11 @@ class Tracking(QWidget):
         if self.track_choice.currentText() == "Laptrack-Overlaps":
             return self.laptrack_overlaps_twoframes(labels, twoframes, loose=True)
 
+        if self.track_choice.currentText() == "TrackAstra":
+            # Interactive segmentation edits need an immediate two-frame answer;
+            # the full TrackAstra model is rerun only from the Track action.
+            return self.laptrack_centroids_twoframes(labels, twoframes, loose=True)
+
     def register_tracking_method(self, name, adapter):
         """Register an adapter that returns a method-neutral tracking proposal."""
         self._tracking_methods[name] = adapter
@@ -952,9 +966,145 @@ class Tracking(QWidget):
             ut.show_duration( start_time, header="Tracking done in " )
 
     def show_trackoptions(self):
-        self.gLapCentroids.setVisible(self.track_choice.currentText() == "Laptrack-Centroids")
+        method = self.track_choice.currentText()
+        self.gLapCentroids.setVisible(method == "Laptrack-Centroids")
         if laptrack_over:
-            self.gLapOverlap.setVisible(self.track_choice.currentText() == "Laptrack-Overlaps")
+            self.gLapOverlap.setVisible(method == "Laptrack-Overlaps")
+        self.gTrackAstra.setVisible(method == "TrackAstra")
+
+        if method == "TrackAstra":
+            if self._last_tracking_method != "TrackAstra":
+                self._laptrack_drift_checked = self.drift_correction.isChecked()
+            self.drift_correction.setChecked(False)
+            self.drift_correction.setEnabled(False)
+            self.drift_radius.setEnabled(False)
+        else:
+            returning_from_trackastra = self._last_tracking_method == "TrackAstra"
+            self.drift_correction.setEnabled(True)
+            self.drift_radius.setEnabled(True)
+            if returning_from_trackastra:
+                self.drift_correction.setChecked(self._laptrack_drift_checked)
+        self._last_tracking_method = method
+
+    def create_trackastra(self):
+        """Create the fixed, intentionally minimal TrackAstra option panel."""
+        self.gTrackAstra, trackastra_layout = wid.group_layout("TrackAstra")
+        configuration = QLabel(
+            "general_2d model · greedy adjacent-frame associations · divisions enabled"
+        )
+        configuration.setWordWrap(True)
+        trackastra_layout.addWidget(configuration)
+        self.gTrackAstra.setLayout(trackastra_layout)
+
+    def trackastra(self, start, end, source_labels):
+        """Return a native proposal from isolated adjacent-frame TrackAstra output."""
+        progress_bar = progress(total=1)
+        progress_bar.set_description("Prepare TrackAstra")
+
+        def report_progress(message, _current, _maximum):
+            progress_bar.set_description(message)
+
+        try:
+            result = self._trackastra_runner(
+                np.asarray(self.epicure.img[start : end + 1]),
+                source_labels,
+                start_frame=start,
+                progress=report_progress,
+            )
+            proposal = self.proposal_from_trackastra_result(
+                start,
+                end,
+                source_labels,
+                result,
+            )
+            progress_bar.update(1)
+            return proposal
+        finally:
+            progress_bar.close()
+
+    def proposal_from_trackastra_result(
+        self,
+        start,
+        end,
+        source_labels,
+        result: TrackAstraResult,
+    ):
+        """Convert detection associations into EpiCure cell tracks and lineage."""
+        detection_keys = {(item.frame, item.label) for item in result.detections}
+        expected_keys = {
+            (start + offset, int(label))
+            for offset, frame in enumerate(source_labels)
+            for label in np.unique(frame)
+            if label != 0
+        }
+        if detection_keys != expected_keys:
+            raise ValueError(
+                "TrackAstra detections do not match the authoritative segmentations"
+            )
+
+        outgoing = {}
+        incoming = {}
+        for association in result.associations:
+            source = (association.source_frame, association.source_label)
+            target = (association.target_frame, association.target_label)
+            if source not in detection_keys or target not in detection_keys:
+                raise ValueError("TrackAstra association refers to an unknown detection")
+            outgoing.setdefault(source, []).append(target)
+            incoming.setdefault(target, []).append(source)
+        if any(len(parents) > 1 for parents in incoming.values()):
+            raise ValueError("TrackAstra detection has more than one parent")
+        if any(len(children) > 2 for children in outgoing.values()):
+            raise ValueError("TrackAstra detection has more than two children")
+
+        division_parents = {
+            (division.parent_frame, division.parent_label)
+            for division in result.divisions
+        }
+        expected_division_parents = {
+            source for source, children in outgoing.items() if len(children) == 2
+        }
+        if division_parents != expected_division_parents:
+            raise ValueError(
+                "TrackAstra division evidence does not match its associations"
+            )
+
+        track_for_detection = {}
+        graph = {}
+        next_track_id = 1
+        for detection in sorted(result.detections, key=lambda item: (item.frame, item.label)):
+            key = (detection.frame, detection.label)
+            parents = incoming.get(key, [])
+            if not parents:
+                track_id = next_track_id
+                next_track_id += 1
+            else:
+                parent = parents[0]
+                if parent not in track_for_detection:
+                    raise ValueError("TrackAstra association order is not chronological")
+                parent_track = track_for_detection[parent]
+                if parent in division_parents:
+                    track_id = next_track_id
+                    next_track_id += 1
+                    graph[track_id] = [parent_track]
+                else:
+                    track_id = parent_track
+            track_for_detection[key] = track_id
+
+        proposed_labels = np.zeros_like(source_labels)
+        for (frame, label), track_id in track_for_detection.items():
+            offset = frame - start
+            if offset < 0 or offset >= len(source_labels):
+                raise ValueError("TrackAstra detection is outside the selected range")
+            proposed_labels[offset][source_labels[offset] == label] = track_id
+
+        return TrackingProposal(
+            start_frame=start,
+            end_frame=end,
+            source_labels=source_labels,
+            labels=proposed_labels,
+            graph=graph,
+            method="TrackAstra",
+        )
 
     def relabel_nonunique_labels(self, track_df):
         """ After tracking, some track can be splitted and get same label, fix that """
