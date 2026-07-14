@@ -2,6 +2,8 @@
 
 from collections.abc import Mapping
 
+from epicure.tracking_transaction import TrackingConflict
+
 
 def _detection_key(value):
     frame, label = value
@@ -50,6 +52,37 @@ def _entries(ledger):
     if isinstance(ledger, Mapping) and ledger.get("kind"):
         return [dict(ledger)]
     return []
+
+
+def _range_and_missing(detections, endpoints):
+    frames = [frame for frame, _label in detections]
+    tracking_range = min(frames), max(frames)
+    in_range = [
+        endpoint
+        for endpoint in endpoints
+        if tracking_range[0] <= endpoint[0] <= tracking_range[1]
+    ]
+    return tracking_range, tuple(endpoint for endpoint in in_range if endpoint not in detections)
+
+
+def _endpoint_conflict(entry, endpoints, tracking_range, missing):
+    labels = tuple(label for _frame, label in endpoints)
+    reason = "Missing edited segmentation endpoint(s): " + ", ".join(
+        str(endpoint) for endpoint in missing
+    )
+    return TrackingConflict(
+        kind="invalid-correction-endpoint",
+        endpoints=labels,
+        message=(
+            f"{entry['kind'].title()} correction was retained but could not be "
+            "replayed; edit its endpoints or dismiss the correction."
+        ),
+        correction_kind=entry["kind"],
+        decision=entry["decision"],
+        detection_endpoints=tuple(endpoints),
+        tracking_range=tracking_range,
+        reason=reason,
+    )
 
 
 def set_association_correction(ledger, source, target, decision):
@@ -149,6 +182,7 @@ def reconcile_association_edges(detection_keys, automatic_edges, ledger):
         for source, target in automatic_edges
     }
     applied = []
+    conflicts = []
     for raw_entry in _entries(ledger):
         if not isinstance(raw_entry, Mapping) or raw_entry.get("kind") != "association":
             continue
@@ -157,6 +191,12 @@ def reconcile_association_edges(detection_keys, automatic_edges, ledger):
             continue
         source = _detection_key(raw_entry["source"])
         target = _detection_key(raw_entry["target"])
+        tracking_range, missing = _range_and_missing(detections, (source, target))
+        if missing:
+            conflicts.append(
+                _endpoint_conflict(raw_entry, (source, target), tracking_range, missing)
+            )
+            continue
         if source not in detections or target not in detections:
             continue
         if decision == "forbidden":
@@ -169,7 +209,7 @@ def reconcile_association_edges(detection_keys, automatic_edges, ledger):
             }
             edges.add((source, target))
         applied.append(association_correction(source, target, decision))
-    return tuple(sorted(edges)), tuple(applied)
+    return tuple(sorted(edges)), tuple(applied), tuple(conflicts)
 
 
 def reconcile_division_edges(detection_keys, automatic_edges, ledger):
@@ -177,6 +217,7 @@ def reconcile_division_edges(detection_keys, automatic_edges, ledger):
     detections = {_detection_key(key) for key in detection_keys}
     edges = set(automatic_edges)
     applied = []
+    conflicts = []
     for raw_entry in _entries(ledger):
         if not isinstance(raw_entry, Mapping) or raw_entry.get("kind") != "division":
             continue
@@ -188,6 +229,13 @@ def reconcile_division_edges(detection_keys, automatic_edges, ledger):
         )
         parent = entry["parent"]
         daughters = entry["daughters"]
+        endpoints = (parent, *daughters)
+        tracking_range, missing = _range_and_missing(detections, endpoints)
+        if missing:
+            conflicts.append(
+                _endpoint_conflict(raw_entry, endpoints, tracking_range, missing)
+            )
+            continue
         if parent not in detections or not set(daughters) <= detections:
             continue
         division_edges = {(parent, daughter) for daughter in daughters}
@@ -202,4 +250,4 @@ def reconcile_division_edges(detection_keys, automatic_edges, ledger):
             }
             edges |= division_edges
         applied.append(entry)
-    return tuple(sorted(edges)), tuple(applied)
+    return tuple(sorted(edges)), tuple(applied), tuple(conflicts)

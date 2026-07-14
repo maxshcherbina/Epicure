@@ -19,6 +19,11 @@ class TrackingConflict:
     kind: str
     endpoints: tuple[int, ...]
     message: str
+    correction_kind: str | None = None
+    decision: str | None = None
+    detection_endpoints: tuple[tuple[int, int], ...] = ()
+    tracking_range: tuple[int, int] | None = None
+    reason: str = ""
 
 
 @dataclass(frozen=True)
@@ -272,7 +277,11 @@ def prepare_tracking_result(
     return TrackingResult(
         labels=result,
         graph=merged_graph,
-        conflicts=(*id_conflicts, *graph_conflicts),
+        conflicts=(
+            *id_conflicts,
+            *graph_conflicts,
+            *tuple(proposal.metadata.get("correction_conflicts", ())),
+        ),
         method=proposal.method,
         tracking_range=(proposal.start_frame, proposal.end_frame),
         metadata=dict(proposal.metadata),

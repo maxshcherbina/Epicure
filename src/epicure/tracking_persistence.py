@@ -40,6 +40,7 @@ def restore_tracking_state(tracking, state):
     tracking.tracking_method_metadata = deepcopy(state.get("MethodMetadata", {}))
     tracking.correction_ledger = deepcopy(state.get("CorrectionLedger", []))
     tracking.tracking_conflicts = deepcopy(state.get("Conflicts", []))
+    tracking.update_conflict_status()
     if tracking.tracklayer is not None:
         tracking.tracklayer.graph = tracking.graph or {}
         tracking.tracklayer.refresh()

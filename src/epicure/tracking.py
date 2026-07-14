@@ -124,6 +124,10 @@ class Tracking(QWidget):
         
         self.track_go = wid.add_button( "Track", self.do_tracking, "Launch the tracking with the current parameter. Can take time" )
         layout.addWidget(self.track_go)
+        self.conflict_status = QLabel("")
+        self.conflict_status.setWordWrap(True)
+        self.conflict_status.setVisible(False)
+        layout.addWidget(self.conflict_status)
         self.setLayout(layout)
 
         ## General tracking options
@@ -204,6 +208,8 @@ class Tracking(QWidget):
         self.tracking_conflicts = []
         self.correction_ledger = []
         self.tracking_method_metadata = {}
+        if hasattr(self, "conflict_status"):
+            self.update_conflict_status()
         ut.remove_layer( self.viewer, "Tracks" )
 
     def init_tracks(self, track_table=None, track_prop=None ):
@@ -929,6 +935,7 @@ class Tracking(QWidget):
         self.track_data = snapshot["track_data"]
         self.epicure.tracked = snapshot["tracked"]
         self.tracking_conflicts = snapshot["conflicts"]
+        self.update_conflict_status()
         self.correction_ledger = snapshot["correction_ledger"]
         self.tracking_method_metadata = snapshot["metadata"]
         if self.tracklayer is not None and self.track_data is not None:
@@ -949,6 +956,7 @@ class Tracking(QWidget):
         self.epicure.seglayer.data = result.labels
         self.graph = result.graph
         self.tracking_conflicts = list(result.conflicts)
+        self.update_conflict_status()
         self.tracking_method_metadata = {
             "method": result.method,
             "range": result.tracking_range,
@@ -1149,6 +1157,35 @@ class Tracking(QWidget):
             self.correction_ledger, parent, daughters
         )
 
+    def dismiss_correction_conflict(self, conflict):
+        """Remove the retained correction behind a conflict by explicit request."""
+        endpoints = conflict.detection_endpoints
+        if conflict.correction_kind == "association" and len(endpoints) == 2:
+            self.remove_association_correction(*endpoints)
+        elif conflict.correction_kind == "division" and len(endpoints) == 3:
+            self.remove_division_correction(endpoints[0], endpoints[1:])
+        self.tracking_conflicts = [
+            existing for existing in self.tracking_conflicts if existing != conflict
+        ]
+        self.update_conflict_status()
+
+    def update_conflict_status(self):
+        """Keep unresolved correction evidence visible in the Track tab."""
+        correction_conflicts = [
+            conflict
+            for conflict in self.tracking_conflicts
+            if getattr(conflict, "correction_kind", None) is not None
+        ]
+        if correction_conflicts:
+            self.conflict_status.setText(
+                f"{len(correction_conflicts)} tracking correction conflict(s). "
+                "Edit the missing endpoints or dismiss the retained correction."
+            )
+            self.conflict_status.setVisible(True)
+        else:
+            self.conflict_status.setText("")
+            self.conflict_status.setVisible(False)
+
     def proposal_from_trackastra_result(
         self,
         start,
@@ -1201,10 +1238,10 @@ class Tracking(QWidget):
         for repair in gap_repairs:
             automatic_edges.append((repair.source, repair.target))
 
-        effective_edges, replayed_corrections = reconcile_association_edges(
+        effective_edges, replayed_corrections, association_conflicts = reconcile_association_edges(
             detection_keys, automatic_edges, self.correction_ledger
         )
-        effective_edges, replayed_divisions = reconcile_division_edges(
+        effective_edges, replayed_divisions, division_conflicts = reconcile_division_edges(
             detection_keys, effective_edges, self.correction_ledger
         )
         outgoing = {}
@@ -1273,6 +1310,10 @@ class Tracking(QWidget):
                 ),
                 "replayed_association_corrections": replayed_corrections,
                 "replayed_division_corrections": replayed_divisions,
+                "correction_conflicts": (
+                    *association_conflicts,
+                    *division_conflicts,
+                ),
             },
         )
 

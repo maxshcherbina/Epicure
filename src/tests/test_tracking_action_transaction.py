@@ -11,7 +11,7 @@ from epicure.appose_trackastra import (
 )
 from epicure.epicuring import EpiCure
 from epicure.hybrid_tracking import GapRepair
-from epicure.tracking_transaction import TrackingProposal
+from epicure.tracking_transaction import TrackingProposal, prepare_tracking_result
 
 
 def _synthetic_epicure(make_napari_viewer, tmp_path):
@@ -764,3 +764,69 @@ def test_forbidden_division_is_not_resurrected_by_trackastra(
 
     assert proposal.graph == {}
     assert len(set(proposal.labels[proposal.labels > 0])) == 3
+
+
+def test_invalid_association_endpoint_becomes_a_scoped_persistent_conflict(
+    make_napari_viewer, tmp_path
+):
+    epic = _synthetic_epicure(make_napari_viewer, tmp_path)
+    tracking = epic.tracking
+    labels = np.zeros((2, 10, 10), dtype=np.uint32)
+    labels[0, 2:4, 2:4] = 1
+    labels[1, 3:5, 2:4] = 2
+    result = TrackAstraResult(
+        schema_version=1,
+        trackastra_version="0.5.3",
+        model="general_2d",
+        device="cpu",
+        detections=(Detection(1, 1, 2.5, 2.5), Detection(2, 2, 3.5, 2.5)),
+        associations=(Association(1, 1, 2, 2, 0.9),),
+        divisions=(),
+    )
+    tracking.set_association_correction((1, 1), (2, 999), "protected")
+
+    proposal = tracking.proposal_from_trackastra_result(1, 2, labels, result)
+    prepared = prepare_tracking_result(epic.seg, tracking.graph, proposal)
+
+    assert len(prepared.conflicts) == 1
+    conflict = prepared.conflicts[0]
+    assert conflict.kind == "invalid-correction-endpoint"
+    assert conflict.correction_kind == "association"
+    assert conflict.detection_endpoints == ((1, 1), (2, 999))
+    assert conflict.tracking_range == (1, 2)
+    assert "(2, 999)" in conflict.reason
+    assert tracking.correction_ledger[0]["target"] == (2, 999)
+    tracking.tracking_conflicts = list(prepared.conflicts)
+    tracking.dismiss_correction_conflict(conflict)
+    assert tracking.correction_ledger == []
+    assert tracking.tracking_conflicts == []
+
+
+def test_invalid_division_endpoint_does_not_block_valid_automatic_tracking(
+    make_napari_viewer, tmp_path
+):
+    epic = _synthetic_epicure(make_napari_viewer, tmp_path)
+    tracking = epic.tracking
+    labels = np.zeros((2, 10, 10), dtype=np.uint32)
+    labels[0, 3:5, 3:5] = 1
+    labels[1, 2:4, 2:4] = 2
+    result = TrackAstraResult(
+        schema_version=1,
+        trackastra_version="0.5.3",
+        model="general_2d",
+        device="cpu",
+        detections=(Detection(0, 1, 3.5, 3.5), Detection(1, 2, 2.5, 2.5)),
+        associations=(Association(0, 1, 1, 2, 0.9),),
+        divisions=(),
+    )
+    tracking.set_division_correction(
+        (0, 1), ((1, 2), (1, 999)), "protected"
+    )
+
+    proposal = tracking.proposal_from_trackastra_result(0, 1, labels, result)
+    prepared = prepare_tracking_result(epic.seg, tracking.graph, proposal)
+
+    assert proposal.labels[0, 3, 3] == proposal.labels[1, 2, 2]
+    assert prepared.conflicts[0].correction_kind == "division"
+    assert prepared.conflicts[0].decision == "protected"
+    assert tracking.correction_ledger[0]["daughters"][1] == (1, 999)
