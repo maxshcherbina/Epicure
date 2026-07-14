@@ -34,6 +34,7 @@ def test_tracking_proposal_preserves_frames_and_identities_outside_its_range():
             labels=proposed,
             graph={},
             method="deterministic-test",
+            metadata={"gap_repairs": ({"provenance": "LapTrack-gap"},)},
         ),
     )
 
@@ -42,6 +43,9 @@ def test_tracking_proposal_preserves_frames_and_identities_outside_its_range():
     assert set(np.unique(result.labels[1])) == {0, 10}
     assert set(np.unique(result.labels[2])) == {0, 20}
     assert result.conflicts == ()
+    assert result.metadata == {
+        "gap_repairs": ({"provenance": "LapTrack-gap"},)
+    }
 
 
 def test_tracking_proposal_reconciles_relationships_crossing_the_range_boundary():

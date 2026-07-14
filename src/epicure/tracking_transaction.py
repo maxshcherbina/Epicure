@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Mapping, Sequence
+from dataclasses import dataclass, field
+from typing import Any, Mapping, Sequence
 
 import numpy as np
 from skimage.segmentation import clear_border
@@ -31,6 +31,7 @@ class TrackingProposal:
     labels: np.ndarray
     graph: Graph
     method: str
+    metadata: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -42,6 +43,7 @@ class TrackingResult:
     conflicts: tuple[TrackingConflict, ...]
     method: str
     tracking_range: tuple[int, int]
+    metadata: Mapping[str, Any] = field(default_factory=dict)
 
 
 def _positive_ids(labels: np.ndarray) -> set[int]:
@@ -273,4 +275,5 @@ def prepare_tracking_result(
         conflicts=(*id_conflicts, *graph_conflicts),
         method=proposal.method,
         tracking_range=(proposal.start_frame, proposal.end_frame),
+        metadata=dict(proposal.metadata),
     )

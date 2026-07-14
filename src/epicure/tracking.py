@@ -9,10 +9,13 @@
     The `track_data` table contains the information of all cell center position at each frame. The `Tracks` layer is slow to update so it is updated only when clicking on `Update tracks` in the viewer, but the object `track_data` is keeping the updated information.
 """
 
+from collections.abc import Mapping
 from copy import deepcopy
+from dataclasses import asdict
 
 from qtpy.QtWidgets import QLabel, QVBoxLayout, QWidget # type: ignore
 from epicure.appose_trackastra import TrackAstraResult, run_trackastra
+from epicure.hybrid_tracking import GapRepair, find_constrained_gap_repairs
 from epicure.laptrack_centroids import LaptrackCentroids
 from epicure.tracking_transaction import (
     TrackingProposal,
@@ -99,6 +102,13 @@ class Tracking(QWidget):
         self.create_trackastra()
         layout.addWidget(self.gTrackAstra)
 
+        gframe, self.gap_frames_line = wid.value_line(
+            "Gap-closing frames",
+            "5",
+            "Bridge a cell that vanishes for up to (n-1) frames before its track breaks (1 = off)",
+        )
+        layout.addLayout(gframe)
+
         drift_layout, self.drift_correction, self.drift_radius = wid.check_value( check="With drift correction", checked=False, value=str(50), descr="Taking into account local drift in tracking calculations") 
         layout.addLayout( drift_layout )
         self._laptrack_drift_checked = self.drift_correction.isChecked()
@@ -147,6 +157,7 @@ class Tracking(QWidget):
         settings["Max distance"] = self.max_dist.text()
         settings["Splitting cost"] = self.splitting_cost.text()
         settings["Merging cutoff"] = self.merging_cost.text()
+        settings["Gap-closing frames"] = self.gap_frames_line.text()
         settings["Min IOU"] = self.min_iou.text()
         settings["Over split"] = self.split_cost.text()
         settings["Over merge"] = self.merg_cost.text()
@@ -165,6 +176,8 @@ class Tracking(QWidget):
                 self.splitting_cost.setText( val )
             if setty == "Merging cutoff":
                 self.merging_cost.setText( val )
+            if setty == "Gap-closing frames":
+                self.gap_frames_line.setText(val)
             if laptrack_over:
                 if setty == "Min IOU":
                     self.min_iou.setText( val )
@@ -910,6 +923,7 @@ class Tracking(QWidget):
         self.tracking_method_metadata = {
             "method": result.method,
             "range": result.tracking_range,
+            **deepcopy(result.metadata),
         }
 
         track_table, track_properties = self.create_tracks()
@@ -1011,16 +1025,76 @@ class Tracking(QWidget):
                 start_frame=start,
                 progress=report_progress,
             )
+            gap_repairs = self.trackastra_gap_repairs(
+                start,
+                source_labels,
+                result,
+            )
             proposal = self.proposal_from_trackastra_result(
                 start,
                 end,
                 source_labels,
                 result,
+                gap_repairs=gap_repairs,
             )
             progress_bar.update(1)
             return proposal
         finally:
             progress_bar.close()
+
+    def trackastra_gap_repairs(self, start, source_labels, result):
+        """Use LapTrack only to nominate compatible non-adjacent open ends."""
+        raw_gap_frames = float(self.gap_frames_line.text())
+        if not raw_gap_frames.is_integer():
+            raise ValueError("Gap-closing frames must be a positive integer")
+        gap_frames = int(raw_gap_frames)
+        if gap_frames < 1:
+            raise ValueError("Gap-closing frames must be a positive integer")
+        if gap_frames == 1:
+            return ()
+
+        laptrack = LaptrackCentroids(self, self.epicure)
+        laptrack.max_distance = float(self.max_dist.text())
+        laptrack.splitting_cost = False
+        laptrack.merging_cost = False
+        laptrack.gap_frames = gap_frames
+        laptrack.set_region_properties(with_extra=False)
+        self.region_properties = ["label", "centroid"]
+        detections = self.labels_to_centroids_array(source_labels, start)
+        laptrack_tracks, _split_df, _merge_df = laptrack.track_centroids(detections)
+        protected_edges, forbidden_edges = self._association_constraints()
+        return find_constrained_gap_repairs(
+            result,
+            source_labels,
+            laptrack_tracks,
+            gap_frames=gap_frames,
+            start_frame=start,
+            protected_edges=protected_edges,
+            forbidden_edges=forbidden_edges,
+        )
+
+    def _association_constraints(self):
+        """Read stable detection-key decisions without depending on ledger storage."""
+        ledger = self.correction_ledger
+        entries = ledger.values() if isinstance(ledger, Mapping) else ledger
+        protected = []
+        forbidden = []
+        for entry in entries:
+            if isinstance(entry, Mapping):
+                decision = entry.get("decision")
+                source = entry.get("source")
+                target = entry.get("target")
+            else:
+                decision = getattr(entry, "decision", None)
+                source = getattr(entry, "source", None)
+                target = getattr(entry, "target", None)
+            if decision not in {"protected", "forbidden"}:
+                continue
+            if source is None or target is None:
+                continue
+            edge = (tuple(source), tuple(target))
+            (protected if decision == "protected" else forbidden).append(edge)
+        return tuple(protected), tuple(forbidden)
 
     def proposal_from_trackastra_result(
         self,
@@ -1028,6 +1102,7 @@ class Tracking(QWidget):
         end,
         source_labels,
         result: TrackAstraResult,
+        gap_repairs: tuple[GapRepair, ...] = (),
     ):
         """Convert detection associations into EpiCure cell tracks and lineage."""
         detection_keys = {(item.frame, item.label) for item in result.detections}
@@ -1051,6 +1126,9 @@ class Tracking(QWidget):
                 raise ValueError("TrackAstra association refers to an unknown detection")
             outgoing.setdefault(source, []).append(target)
             incoming.setdefault(target, []).append(source)
+        for repair in gap_repairs:
+            outgoing.setdefault(repair.source, []).append(repair.target)
+            incoming.setdefault(repair.target, []).append(repair.source)
         if any(len(parents) > 1 for parents in incoming.values()):
             raise ValueError("TrackAstra detection has more than one parent")
         if any(len(children) > 2 for children in outgoing.values()):
@@ -1104,6 +1182,17 @@ class Tracking(QWidget):
             labels=proposed_labels,
             graph=graph,
             method="TrackAstra",
+            metadata={
+                "trackastra_version": result.trackastra_version,
+                "trackastra_device": result.device,
+                "trackastra_associations": tuple(
+                    asdict(association) for association in result.associations
+                ),
+                "trackastra_divisions": tuple(
+                    asdict(division) for division in result.divisions
+                ),
+                "gap_repairs": tuple(asdict(repair) for repair in gap_repairs),
+            },
         )
 
     def relabel_nonunique_labels(self, track_df):
@@ -1407,10 +1496,6 @@ class Tracking(QWidget):
         ## merging ~ error ?
         mcost, self.merging_cost = wid.value_line( "Merging cutoff", "0", "Weight to merge to labels together" )
         glap_layout.addLayout(mcost)
-        ## gap-closing ~ bridge brief segmentation dropouts so a track survives them
-        gframe, self.gap_frames_line = wid.value_line( "Gap-closing frames", "5", "Bridge a cell that vanishes for up to (n-1) frames before its track breaks (1 = off)" )
-        glap_layout.addLayout(gframe)
-
         add_feat, self.check_penalties, self.bpenalties = wid.checkgroup_help( "Add features cost", True, "Add cell features in the tracking calculation", None )
         self.create_penalties()
         glap_layout.addWidget(self.check_penalties)

@@ -8,6 +8,7 @@ from epicure.appose_trackastra import (
     TrackAstraResult,
 )
 from epicure.epicuring import EpiCure
+from epicure.hybrid_tracking import GapRepair
 from epicure.tracking_transaction import TrackingProposal
 
 
@@ -290,6 +291,7 @@ def test_trackastra_selector_inhibits_drift_and_restores_laptrack_state(
     tracking = epic.tracking
     tracking.drift_correction.setChecked(True)
     tracking.drift_radius.setText("73")
+    tracking.gap_frames_line.setText("4")
 
     assert tracking.track_choice.findText("TrackAstra") >= 0
     tracking.track_choice.setCurrentText("TrackAstra")
@@ -298,6 +300,8 @@ def test_trackastra_selector_inhibits_drift_and_restores_laptrack_state(
     assert not tracking.drift_correction.isEnabled()
     assert not tracking.drift_radius.isEnabled()
     assert not tracking.gTrackAstra.isHidden()
+    assert not tracking.gap_frames_line.isHidden()
+    assert tracking.get_current_settings()["Gap-closing frames"] == "4"
 
     tracking.track_choice.setCurrentText("Laptrack-Centroids")
 
@@ -305,6 +309,7 @@ def test_trackastra_selector_inhibits_drift_and_restores_laptrack_state(
     assert tracking.drift_radius.isEnabled()
     assert tracking.drift_correction.isChecked()
     assert tracking.drift_radius.text() == "73"
+    assert tracking.gap_frames_line.text() == "4"
 
 
 def test_trackastra_runs_through_normal_action_with_divisions_and_singletons(
@@ -356,8 +361,77 @@ def test_trackastra_runs_through_normal_action_with_divisions_and_singletons(
     assert set(tracking.graph) == {20, 31}
     assert tracking.graph[20] == [30]
     assert tracking.graph[31] == [30]
-    assert tracking.tracking_method_metadata == {
-        "method": "TrackAstra",
-        "range": (1, 2),
-    }
+    assert tracking.tracking_method_metadata["method"] == "TrackAstra"
+    assert tracking.tracking_method_metadata["range"] == (1, 2)
+    assert tracking.tracking_method_metadata["trackastra_version"] == "0.5.3"
+    assert tracking.tracking_method_metadata["trackastra_device"] == "cpu"
+    assert len(tracking.tracking_method_metadata["trackastra_associations"]) == 2
+    assert len(tracking.tracking_method_metadata["trackastra_divisions"]) == 1
+    assert tracking.tracking_method_metadata["gap_repairs"] == ()
     np.testing.assert_array_equal(tracking.track_data, tracking.tracklayer.data)
+
+
+def test_trackastra_gap_repair_joins_tracklets_and_keeps_review_provenance(
+    make_napari_viewer, tmp_path
+):
+    epic = _synthetic_epicure(make_napari_viewer, tmp_path)
+    labels = np.zeros((4, 10, 10), dtype=np.uint32)
+    labels[0, 2:4, 2:4] = 1
+    labels[3, 3:5, 2:4] = 2
+    result = TrackAstraResult(
+        schema_version=1,
+        trackastra_version="0.5.3",
+        model="general_2d",
+        device="cpu",
+        detections=(Detection(0, 1, 2.5, 2.5), Detection(3, 2, 3.5, 2.5)),
+        associations=(),
+        divisions=(),
+    )
+    repair = GapRepair(
+        source=(0, 1),
+        target=(3, 2),
+        missing_frames=2,
+        distance=1.0,
+        distance_per_frame=1.0 / 3.0,
+        area_ratio=1.0,
+        source_y=2.5,
+        source_x=2.5,
+        target_y=3.5,
+        target_x=2.5,
+    )
+
+    proposal = epic.tracking.proposal_from_trackastra_result(
+        0, 3, labels, result, gap_repairs=(repair,)
+    )
+
+    assert proposal.labels[0, 2, 2] == proposal.labels[3, 3, 2]
+    assert proposal.metadata["gap_repairs"][0]["provenance"] == "LapTrack-gap"
+    assert proposal.metadata["gap_repairs"][0]["missing_frames"] == 2
+
+
+def test_trackastra_gap_pass_uses_shared_laptrack_gap_setting(
+    make_napari_viewer, tmp_path
+):
+    epic = _synthetic_epicure(make_napari_viewer, tmp_path)
+    labels = np.zeros((4, 10, 10), dtype=np.uint32)
+    labels[0, 2:4, 2:4] = 1
+    labels[3, 3:5, 2:4] = 2
+    result = TrackAstraResult(
+        schema_version=1,
+        trackastra_version="0.5.3",
+        model="general_2d",
+        device="cpu",
+        detections=(Detection(0, 1, 2.5, 2.5), Detection(3, 2, 3.5, 2.5)),
+        associations=(),
+        divisions=(),
+    )
+    epic.tracking.max_dist.setText("15")
+    epic.tracking.gap_frames_line.setText("5")
+
+    repairs = epic.tracking.trackastra_gap_repairs(0, labels, result)
+
+    assert len(repairs) == 1
+    assert repairs[0].source == (0, 1)
+    assert repairs[0].target == (3, 2)
+    epic.tracking.gap_frames_line.setText("1")
+    assert epic.tracking.trackastra_gap_repairs(0, labels, result) == ()
