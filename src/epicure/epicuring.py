@@ -1369,11 +1369,26 @@ class EpiCure:
         ## replace the two initial labels, in inversed order
         self.replace_label(tmp_labels[0], olab, start_frame)
         self.replace_label(tmp_labels[1], lab, start_frame)
+        if start_frame > 0:
+            for track_id in (lab, olab):
+                if (
+                    track_id in self.seg[start_frame - 1]
+                    and track_id in self.seg[start_frame]
+                ):
+                    self.tracking.set_association_correction(
+                        (start_frame - 1, track_id),
+                        (start_frame, track_id),
+                        "protected",
+                    )
 
     def split_track(self, label, frame):
         """Split a track at given frame"""
         new_label = self.get_free_label()
         self.replace_label(label, new_label, frame)
+        if frame > 0 and label in self.seg[frame - 1] and new_label in self.seg[frame]:
+            self.tracking.set_association_correction(
+                (frame - 1, label), (frame, new_label), "forbidden"
+            )
         if self.verbose > 0:
             ut.show_info("Split track " + str(label) + " from frame " + str(frame))
         return new_label

@@ -462,6 +462,7 @@ def test_hybrid_tracking_save_reopen_and_lineage_csv_use_committed_state(
     }
     tracking.correction_ledger = [
         {
+            "kind": "association",
             "decision": "protected",
             "source": (0, 10),
             "target": (1, 10),
@@ -516,3 +517,137 @@ def test_legacy_project_without_tracking_state_keeps_empty_defaults(
     assert epic.tracking.tracking_method_metadata == {}
     assert epic.tracking.correction_ledger == []
     assert epic.tracking.tracking_conflicts == []
+
+
+def test_manual_join_split_and_swap_record_detection_key_corrections(
+    make_napari_viewer, tmp_path
+):
+    epic = _synthetic_epicure(make_napari_viewer, tmp_path)
+    tracking = epic.tracking
+
+    epic.editing.tracks_temporal_merging(
+        80, np.array((0, 0, 8)), 90, np.array((1, 0, 8))
+    )
+    assert {
+        "kind": "association",
+        "decision": "protected",
+        "source": (0, 80),
+        "target": (1, 80),
+    } in tracking.correction_ledger
+
+    split_label = epic.split_track(10, 1)
+    assert {
+        "kind": "association",
+        "decision": "forbidden",
+        "source": (0, 10),
+        "target": (1, split_label),
+    } in tracking.correction_ledger
+
+    for frame in range(3):
+        epic.seg[frame, 4:6, 0:2] = 40
+        epic.seg[frame, 7:9, 4:6] = 50
+    epic.seglayer.data = epic.seg
+    tracking.reset_tracks()
+    epic.swap_tracks(40, 50, 1)
+    assert {
+        "kind": "association",
+        "decision": "protected",
+        "source": (0, 40),
+        "target": (1, 40),
+    } in tracking.correction_ledger
+    assert {
+        "kind": "association",
+        "decision": "protected",
+        "source": (0, 50),
+        "target": (1, 50),
+    } in tracking.correction_ledger
+
+
+def test_association_corrections_replace_remove_and_override_fresh_edges(
+    make_napari_viewer, tmp_path
+):
+    epic = _synthetic_epicure(make_napari_viewer, tmp_path)
+    tracking = epic.tracking
+    labels = np.zeros((2, 10, 10), dtype=np.uint32)
+    labels[0, 2:4, 2:4] = 1
+    labels[0, 6:8, 2:4] = 2
+    labels[1, 2:4, 3:5] = 3
+    labels[1, 6:8, 3:5] = 4
+    result = TrackAstraResult(
+        schema_version=1,
+        trackastra_version="0.5.3",
+        model="general_2d",
+        device="cpu",
+        detections=(
+            Detection(1, 1, 2.5, 2.5),
+            Detection(1, 2, 6.5, 2.5),
+            Detection(2, 3, 2.5, 3.5),
+            Detection(2, 4, 6.5, 3.5),
+        ),
+        associations=(
+            Association(1, 1, 2, 3, 0.9),
+            Association(1, 2, 2, 4, 0.9),
+        ),
+        divisions=(),
+    )
+
+    tracking.set_association_correction((1, 1), (2, 4), "protected")
+    proposal = tracking.proposal_from_trackastra_result(1, 2, labels, result)
+
+    assert proposal.labels[0, 2, 2] == proposal.labels[1, 6, 3]
+    assert proposal.labels[0, 2, 2] != proposal.labels[1, 2, 3]
+    assert proposal.labels[0, 6, 2] != proposal.labels[1, 6, 3]
+    assert proposal.metadata["replayed_association_corrections"] == (
+        {
+            "kind": "association",
+            "decision": "protected",
+            "source": (1, 1),
+            "target": (2, 4),
+        },
+    )
+
+    tracking.set_association_correction((1, 1), (2, 4), "forbidden")
+    assert len(tracking.correction_ledger) == 1
+    forbidden = tracking.proposal_from_trackastra_result(1, 2, labels, result)
+    assert forbidden.labels[0, 2, 2] != forbidden.labels[1, 6, 3]
+    tracking.remove_association_correction((1, 1), (2, 4))
+    assert tracking.correction_ledger == []
+
+
+def test_forbidden_association_removes_a_proposed_gap_repair(
+    make_napari_viewer, tmp_path
+):
+    epic = _synthetic_epicure(make_napari_viewer, tmp_path)
+    tracking = epic.tracking
+    labels = np.zeros((3, 10, 10), dtype=np.uint32)
+    labels[0, 2:4, 2:4] = 1
+    labels[2, 3:5, 2:4] = 2
+    result = TrackAstraResult(
+        schema_version=1,
+        trackastra_version="0.5.3",
+        model="general_2d",
+        device="cpu",
+        detections=(Detection(0, 1, 2.5, 2.5), Detection(2, 2, 3.5, 2.5)),
+        associations=(),
+        divisions=(),
+    )
+    repair = GapRepair(
+        source=(0, 1),
+        target=(2, 2),
+        missing_frames=1,
+        distance=1.0,
+        distance_per_frame=0.5,
+        area_ratio=1.0,
+        source_y=2.5,
+        source_x=2.5,
+        target_y=3.5,
+        target_x=2.5,
+    )
+    tracking.set_association_correction((0, 1), (2, 2), "forbidden")
+
+    proposal = tracking.proposal_from_trackastra_result(
+        0, 2, labels, result, gap_repairs=(repair,)
+    )
+
+    assert proposal.labels[0, 2, 2] != proposal.labels[2, 3, 2]
+    assert proposal.metadata["gap_repairs"] == ()

@@ -16,6 +16,11 @@ from dataclasses import asdict
 from qtpy.QtWidgets import QLabel, QVBoxLayout, QWidget # type: ignore
 from epicure.appose_trackastra import TrackAstraResult, run_trackastra
 from epicure.hybrid_tracking import GapRepair, find_constrained_gap_repairs
+from epicure.tracking_corrections import (
+    remove_association_correction as remove_correction,
+    reconcile_association_edges,
+    set_association_correction as upsert_correction,
+)
 from epicure.laptrack_centroids import LaptrackCentroids
 from epicure.tracking_transaction import (
     TrackingProposal,
@@ -1096,6 +1101,18 @@ class Tracking(QWidget):
             (protected if decision == "protected" else forbidden).append(edge)
         return tuple(protected), tuple(forbidden)
 
+    def set_association_correction(self, source, target, decision):
+        """Persist a human must-link or cannot-link between two detections."""
+        self.correction_ledger = upsert_correction(
+            self.correction_ledger, source, target, decision
+        )
+
+    def remove_association_correction(self, source, target):
+        """Deliberately remove a human association decision."""
+        self.correction_ledger = remove_correction(
+            self.correction_ledger, source, target
+        )
+
     def proposal_from_trackastra_result(
         self,
         start,
@@ -1117,34 +1134,55 @@ class Tracking(QWidget):
                 "TrackAstra detections do not match the authoritative segmentations"
             )
 
-        outgoing = {}
-        incoming = {}
+        raw_outgoing = {}
+        raw_incoming = {}
+        automatic_edges = []
         for association in result.associations:
             source = (association.source_frame, association.source_label)
             target = (association.target_frame, association.target_label)
             if source not in detection_keys or target not in detection_keys:
                 raise ValueError("TrackAstra association refers to an unknown detection")
-            outgoing.setdefault(source, []).append(target)
-            incoming.setdefault(target, []).append(source)
-        for repair in gap_repairs:
-            outgoing.setdefault(repair.source, []).append(repair.target)
-            incoming.setdefault(repair.target, []).append(repair.source)
-        if any(len(parents) > 1 for parents in incoming.values()):
+            raw_outgoing.setdefault(source, []).append(target)
+            raw_incoming.setdefault(target, []).append(source)
+            automatic_edges.append((source, target))
+        if any(len(parents) > 1 for parents in raw_incoming.values()):
             raise ValueError("TrackAstra detection has more than one parent")
-        if any(len(children) > 2 for children in outgoing.values()):
+        if any(len(children) > 2 for children in raw_outgoing.values()):
             raise ValueError("TrackAstra detection has more than two children")
 
-        division_parents = {
+        raw_division_parents = {
             (division.parent_frame, division.parent_label)
             for division in result.divisions
         }
-        expected_division_parents = {
-            source for source, children in outgoing.items() if len(children) == 2
+        expected_raw_division_parents = {
+            source for source, children in raw_outgoing.items() if len(children) == 2
         }
-        if division_parents != expected_division_parents:
+        if raw_division_parents != expected_raw_division_parents:
             raise ValueError(
                 "TrackAstra division evidence does not match its associations"
             )
+
+        for repair in gap_repairs:
+            automatic_edges.append((repair.source, repair.target))
+
+        effective_edges, replayed_corrections = reconcile_association_edges(
+            detection_keys, automatic_edges, self.correction_ledger
+        )
+        outgoing = {}
+        incoming = {}
+        for source, target in effective_edges:
+            outgoing.setdefault(source, []).append(target)
+            incoming.setdefault(target, []).append(source)
+        if any(len(parents) > 1 for parents in incoming.values()):
+            raise ValueError("Reconciled detection has more than one parent")
+        if any(len(children) > 2 for children in outgoing.values()):
+            raise ValueError("Reconciled detection has more than two children")
+
+        division_parents = {
+            source
+            for source in raw_division_parents
+            if len(outgoing.get(source, ())) == 2
+        }
 
         track_for_detection = {}
         graph = {}
@@ -1191,7 +1229,12 @@ class Tracking(QWidget):
                 "trackastra_divisions": tuple(
                     asdict(division) for division in result.divisions
                 ),
-                "gap_repairs": tuple(asdict(repair) for repair in gap_repairs),
+                "gap_repairs": tuple(
+                    asdict(repair)
+                    for repair in gap_repairs
+                    if (repair.source, repair.target) in effective_edges
+                ),
+                "replayed_association_corrections": replayed_corrections,
             },
         )
 

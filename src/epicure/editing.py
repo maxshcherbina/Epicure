@@ -2050,6 +2050,11 @@ class Editing( QWidget ):
             labelb = self.epicure.split_track( labelb, int(posb[0]) )
 
         self.epicure.replace_label( labelb, labela, int(posb[0]) )
+        self.epicure.tracking.set_association_correction(
+            (int(posa[0]), int(labela)),
+            (int(posb[0]), int(labela)),
+            "protected",
+        )
         
 
     def get_parents(self, twoframes, labels):
@@ -2321,4 +2326,3 @@ class ClassifyEvent( QWidget ):
     def classify( self ):
         """ Add all the cell that finish with the selected event to the group """
         self.edit.group_event_cells( self.event_choice.currentText() )
-
