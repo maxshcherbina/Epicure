@@ -1,3 +1,5 @@
+import csv
+
 import numpy as np
 import pytest
 
@@ -435,3 +437,82 @@ def test_trackastra_gap_pass_uses_shared_laptrack_gap_setting(
     assert repairs[0].target == (3, 2)
     epic.tracking.gap_frames_line.setText("1")
     assert epic.tracking.trackastra_gap_repairs(0, labels, result) == ()
+
+
+def test_hybrid_tracking_save_reopen_and_lineage_csv_use_committed_state(
+    make_napari_viewer, tmp_path
+):
+    epic = _synthetic_epicure(make_napari_viewer, tmp_path)
+    tracking = epic.tracking
+    tracking.graph = {20: [30], 31: [30]}
+    tracking.tracklayer.graph = tracking.graph
+    tracking.tracking_method_metadata = {
+        "method": "TrackAstra",
+        "range": (1, 2),
+        "trackastra_version": "0.5.3",
+        "trackastra_device": "cpu",
+        "gap_repairs": (
+            {
+                "source": (0, 10),
+                "target": (3, 20),
+                "missing_frames": 2,
+                "provenance": "LapTrack-gap",
+            },
+        ),
+    }
+    tracking.correction_ledger = [
+        {
+            "decision": "protected",
+            "source": (0, 10),
+            "target": (1, 10),
+        }
+    ]
+    tracking.tracking_conflicts = [{"kind": "boundary", "track": 10}]
+
+    expected_labels = epic.seg.copy()
+    expected_tracks = tracking.track_data.copy()
+    expected_graph = tracking.graph.copy()
+    epic.save_epicures()
+
+    lineage_path = tmp_path / "epics" / "synthetic_lineage.csv"
+    with lineage_path.open(newline="") as infile:
+        rows = {int(row["label"]): row for row in csv.DictReader(infile)}
+    assert set(rows) == set(int(label) for label in expected_tracks[:, 0])
+    assert rows[30] == {"label": "30", "t1": "1", "t2": "1", "parent": "0"}
+    assert rows[20] == {"label": "20", "t1": "2", "t2": "3", "parent": "30"}
+    assert rows[31] == {"label": "31", "t1": "2", "t2": "2", "parent": "30"}
+
+    reopened_viewer = make_napari_viewer()
+    reopened = EpiCure(reopened_viewer)
+    reopened_movie = reopened_viewer.add_image(
+        np.zeros((4, 10, 10), dtype=np.uint8), name="Synthetic movie"
+    )
+    reopened.movie_from_layer(reopened_movie, str(tmp_path / "synthetic.tif"))
+    reopened.set_epithelia(False)
+    reopened.go_epicure(
+        str(tmp_path / "epics"),
+        str(tmp_path / "epics" / "synthetic_labels.tif"),
+    )
+
+    np.testing.assert_array_equal(reopened.seg, expected_labels)
+    np.testing.assert_array_equal(reopened.tracking.track_data, expected_tracks)
+    np.testing.assert_array_equal(
+        reopened.tracking.tracklayer.data, expected_tracks
+    )
+    assert reopened.tracking.graph == expected_graph
+    assert reopened.tracking.tracklayer.graph == expected_graph
+    assert reopened.tracking.tracking_method_metadata == tracking.tracking_method_metadata
+    assert reopened.tracking.correction_ledger == tracking.correction_ledger
+    assert reopened.tracking.tracking_conflicts == tracking.tracking_conflicts
+
+
+def test_legacy_project_without_tracking_state_keeps_empty_defaults(
+    make_napari_viewer, tmp_path
+):
+    epic = _synthetic_epicure(make_napari_viewer, tmp_path)
+
+    epic.read_epidata({"Graph": {20: [30]}})
+
+    assert epic.tracking.tracking_method_metadata == {}
+    assert epic.tracking.correction_ledger == []
+    assert epic.tracking.tracking_conflicts == []

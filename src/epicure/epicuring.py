@@ -29,6 +29,11 @@ from epicure.inspecting import Inspecting
 from epicure.outputing import Outputing
 from epicure.displaying import Displaying
 from epicure.preferences import Preferences
+from epicure.tracking_persistence import (
+    restore_tracking_state,
+    serialize_tracking_state,
+    write_lineage_csv,
+)
 import epicure.tm_loader as tm
 
 
@@ -770,6 +775,7 @@ class EpiCure:
             epidata["Group"] = self.groups
         if self.tracking.graph is not None:
             epidata["Graph"] = self.tracking.graph
+        epidata["Tracking"] = serialize_tracking_state(self.tracking)
         if self.inspecting is not None and self.inspecting.events is not None:
             epidata["Events"] = {}
             if self.inspecting.events.data is not None:
@@ -784,6 +790,11 @@ class EpiCure:
             epidata["Display"]["MovieContrast"] = self.viewer.layers["Movie"].contrast_limits
         pickle.dump(epidata, outfile)
         outfile.close()
+        write_lineage_csv(
+            os.path.join(self.outdir, self.imgname + "_lineage.csv"),
+            self.tracking.track_data,
+            self.tracking.graph,
+        )
 
     def read_group_data(self, groups):
         """Read the group EpiCure data from opened file"""
@@ -896,6 +907,12 @@ class EpiCure:
                     ## load display setting
                     if "MovieContrast" in vals.keys():
                         self.viewer.layers["Movie"].contrast_limits = vals["MovieContrast"]
+        if "Tracking" in epidata:
+            restore_tracking_state(self.tracking, epidata["Tracking"])
+        elif self.tracking.tracklayer is not None:
+            # Projects saved before the versioned Tracking block still retain
+            # their native division graph and use empty metadata defaults.
+            self.tracking.tracklayer.graph = self.tracking.graph or {}
 
     def load_epicure_data_old(self, groups, infile):
         """Load saved infos from file"""
