@@ -171,11 +171,19 @@ class EpiCure:
                 cval = minshape
             self.mov = self.img
 
-        ## display the movie: rename the layer
-        ut.remove_layer(self.viewer, "Movie")
+        ## Display the movie. When restarting from an existing EpiCure session,
+        ## the selected source can already be the canonical Movie layer. Do not
+        ## remove that same object from the viewer before renaming/reusing it.
+        current_movie = (
+            self.viewer.layers["Movie"]
+            if "Movie" in self.viewer.layers
+            else None
+        )
+        if current_movie is not layer:
+            ut.remove_layer(self.viewer, "Movie")
         layer.name = "Movie"
 
-        self.imgshape = self.viewer.layers["Movie"].data.shape
+        self.imgshape = layer.data.shape
         self.imgshape2D = self.imgshape[1:3]
         self.nframes = self.imgshape[0]
         return caxis, cval

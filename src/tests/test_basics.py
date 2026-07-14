@@ -109,7 +109,56 @@ def test_load_from_layers( make_napari_viewer ):
     assert epic.nlabels() == 1294
     assert os.path.abspath(epic.outdir) == os.path.abspath(os.path.join(".", "test_data", "epics"))
     #viewer.show() # manual check
-    
+
+
+def test_reopen_from_existing_movie_layer(make_napari_viewer):
+    """An existing canonical Movie layer can be reused by a new session."""
+    viewer = make_napari_viewer()
+    movie_layer = viewer.add_image(
+        np.zeros((3, 8, 9), dtype=np.uint8),
+        name="Raw movie",
+    )
+
+    first_epicure = epi.EpiCure(viewer)
+    first_epicure.movie_from_layer(movie_layer, "first_movie.tif")
+    selected_movie = viewer.layers["Movie"]
+
+    _, reopened_epicure = gui_files(
+        selected_movie,
+        "second_movie.tif",
+        None,
+    )
+
+    assert viewer.layers["Movie"] is selected_movie
+    assert sum(layer.name == "Movie" for layer in viewer.layers) == 1
+    assert reopened_epicure.imgshape == (3, 8, 9)
+    assert reopened_epicure.nframes == 3
+
+
+def test_new_movie_layer_replaces_existing_movie_layer(make_napari_viewer):
+    """A different selected image still replaces the previous canonical movie."""
+    viewer = make_napari_viewer()
+    old_movie = viewer.add_image(
+        np.zeros((3, 8, 9), dtype=np.uint8),
+        name="Old raw movie",
+    )
+    epic = epi.EpiCure(viewer)
+    epic.movie_from_layer(old_movie, "old_movie.tif")
+
+    replacement = viewer.add_image(
+        np.ones((4, 10, 11), dtype=np.uint8),
+        name="Replacement raw movie",
+    )
+    reopened_epicure = epi.EpiCure(viewer)
+    reopened_epicure.movie_from_layer(replacement, "replacement_movie.tif")
+
+    assert old_movie not in viewer.layers
+    assert viewer.layers["Movie"] is replacement
+    assert sum(layer.name == "Movie" for layer in viewer.layers) == 1
+    assert reopened_epicure.imgshape == (4, 10, 11)
+    assert reopened_epicure.nframes == 4
+
+
 if __name__ == "__main__":
     #test_load_movie()
     test_load_from_layers()
