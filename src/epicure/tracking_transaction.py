@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
 import numpy as np
-from skimage.segmentation import clear_border
 
 
 Graph = Mapping[int, int | Sequence[int]]
@@ -63,9 +62,22 @@ def exclude_border_cells(labels: np.ndarray, border_size: int = 1) -> np.ndarray
         raise ValueError("Border exclusion expects a 3D label movie")
     if border_size < 0:
         raise ValueError("Border size cannot be negative")
-    return np.stack(
-        [clear_border(frame, buffer_size=border_size) for frame in movie], axis=0
-    ).astype(movie.dtype, copy=False)
+    inset = border_size + 1
+    excluded = movie.copy()
+    for index, frame in enumerate(movie):
+        border_labels = np.unique(
+            np.concatenate(
+                (
+                    frame[:inset, :].ravel(),
+                    frame[-inset:, :].ravel(),
+                    frame[:, :inset].ravel(),
+                    frame[:, -inset:].ravel(),
+                )
+            )
+        )
+        border_labels = border_labels[border_labels != 0]
+        excluded[index][np.isin(frame, border_labels)] = 0
+    return excluded
 
 
 def _parents(value: int | Sequence[int]) -> list[int]:

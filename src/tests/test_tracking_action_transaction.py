@@ -388,6 +388,29 @@ def test_trackastra_runs_through_normal_action_with_divisions_and_singletons(
     assert epic.inspecting.nb_type("human-classified") == 1
     np.testing.assert_array_equal(tracking.track_data, tracking.tracklayer.data)
 
+    expected_labels = epic.seg.copy()
+    expected_tracks = tracking.track_data.copy()
+    expected_graph = tracking.graph.copy()
+    expected_metadata = tracking.tracking_method_metadata.copy()
+    epic.save_epicures()
+
+    reopened_viewer = make_napari_viewer()
+    reopened = EpiCure(reopened_viewer)
+    reopened_movie = reopened_viewer.add_image(
+        np.zeros((4, 10, 10), dtype=np.uint8), name="Synthetic movie"
+    )
+    reopened.movie_from_layer(reopened_movie, str(tmp_path / "synthetic.tif"))
+    reopened.set_epithelia(False)
+    reopened.go_epicure(
+        str(tmp_path / "epics"),
+        str(tmp_path / "epics" / "synthetic_labels.tif"),
+    )
+
+    np.testing.assert_array_equal(reopened.seg, expected_labels)
+    np.testing.assert_array_equal(reopened.tracking.track_data, expected_tracks)
+    assert reopened.tracking.graph == expected_graph
+    assert reopened.tracking.tracking_method_metadata == expected_metadata
+
 
 def test_trackastra_gap_repair_joins_tracklets_and_keeps_review_provenance(
     make_napari_viewer, tmp_path
@@ -857,9 +880,13 @@ def test_invalid_association_endpoint_becomes_a_scoped_persistent_conflict(
     assert "(2, 999)" in conflict.reason
     assert tracking.correction_ledger[0]["target"] == (2, 999)
     tracking.tracking_conflicts = list(prepared.conflicts)
-    tracking.dismiss_correction_conflict(conflict)
+    tracking.update_conflict_status()
+    assert not tracking.dismiss_conflict.isHidden()
+    assert "(2, 999)" in tracking.conflict_status.text()
+    tracking.dismiss_conflict.click()
     assert tracking.correction_ledger == []
     assert tracking.tracking_conflicts == []
+    assert tracking.dismiss_conflict.isHidden()
 
 
 def test_invalid_division_endpoint_does_not_block_valid_automatic_tracking(

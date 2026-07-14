@@ -128,6 +128,13 @@ class Tracking(QWidget):
         self.conflict_status.setWordWrap(True)
         self.conflict_status.setVisible(False)
         layout.addWidget(self.conflict_status)
+        self.dismiss_conflict = wid.add_button(
+            "Dismiss first correction conflict",
+            self.dismiss_first_correction_conflict,
+            "Remove the retained human correction for the first unresolved conflict",
+        )
+        self.dismiss_conflict.setVisible(False)
+        layout.addWidget(self.dismiss_conflict)
         self.setLayout(layout)
 
         ## General tracking options
@@ -1169,6 +1176,13 @@ class Tracking(QWidget):
         ]
         self.update_conflict_status()
 
+    def dismiss_first_correction_conflict(self):
+        """Dismiss the first correction conflict exposed in the Track tab."""
+        for conflict in self.tracking_conflicts:
+            if getattr(conflict, "correction_kind", None) is not None:
+                self.dismiss_correction_conflict(conflict)
+                return
+
     def update_conflict_status(self):
         """Keep unresolved correction evidence visible in the Track tab."""
         correction_conflicts = [
@@ -1177,14 +1191,17 @@ class Tracking(QWidget):
             if getattr(conflict, "correction_kind", None) is not None
         ]
         if correction_conflicts:
+            first = correction_conflicts[0]
             self.conflict_status.setText(
                 f"{len(correction_conflicts)} tracking correction conflict(s). "
-                "Edit the missing endpoints or dismiss the retained correction."
+                f"{first.reason} Edit the missing endpoints or dismiss the retained correction."
             )
             self.conflict_status.setVisible(True)
+            self.dismiss_conflict.setVisible(True)
         else:
             self.conflict_status.setText("")
             self.conflict_status.setVisible(False)
+            self.dismiss_conflict.setVisible(False)
 
     def proposal_from_trackastra_result(
         self,

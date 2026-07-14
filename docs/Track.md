@@ -13,8 +13,68 @@ EpiCure opens a Tracks layer in Napari that displays the trajectories of each ce
 !!! warning "This layer is very slow to update, so it is NOT updated at each action." 
 	A local version of the tracks is kept up-to-date with the modifications done, but not the displayed version. To update the display to the latest version, click on Update tracks.
 
-With the EpiCure Track panel, you can choose a tracking algorithm and tune its parameter. 
-It's also possible to track the cells in an other software/plugins. 
+With the EpiCure Track panel, you can choose a tracking algorithm and tune its parameter.
+It's also possible to track the cells in an other software/plugins.
+
+## Track with TrackAstra
+
+`TrackAstra` is an additional tracking method in the Track tab. It does not
+replace either Laptrack option. In this hybrid method, TrackAstra 0.5.3 assigns
+adjacent-frame cell identities and division relationships using the fixed
+`general_2d` model, while Laptrack is used only to reconnect compatible open
+track ends across missing segmentations.
+
+The initial supported platform is Apple Silicon macOS (ARM64). On the first run,
+EpiCure provisions an isolated environment and downloads the model; this may take
+several minutes. Later runs reuse the cached environment. TrackAstra uses MPS when
+it is available and otherwise falls back to CPU. Provisioning or inference
+failure leaves the current segmentation, graph, events, and corrections unchanged.
+
+### Shared controls and preprocessing
+
+- `Track only some frames` applies the inclusive tracking range to TrackAstra.
+  Frames and valid relationships outside that range are preserved.
+- `Remove border cells` supplies the shared border distance. The production
+  default is 1 pixel, and whole border detections are excluded only inside the
+  selected tracking range.
+- `Gap-closing frames` has the same meaning for both tracker families. A value
+  of 5 bridges up to four missing frames; 1 disables gap repair.
+- Drift correction is automatically unchecked and disabled while TrackAstra is
+  selected. It becomes available again after choosing Laptrack.
+
+TrackAstra never creates or repairs segmentation masks. The segmentation visible
+when Track is clicked is the authoritative detection set, so segmentation edits
+are respected on every rerun. Unmatched detections remain as singleton cell
+tracks rather than disappearing.
+
+### Rerunning after manual corrections
+
+Manual track joins, splits, swaps, and division changes are retained as protected
+or forbidden decisions keyed to frame-local detections. A later TrackAstra run
+recomputes automatic links but reapplies valid human decisions as hard constraints.
+If a segmentation edit removes a correction endpoint, EpiCure keeps the evidence
+and shows the missing endpoint in the Track tab instead of guessing another cell.
+Correct the segmentation/relationship and rerun, or use `Dismiss first correction
+conflict` to deliberately remove that retained correction.
+
+### Inspect and saved results
+
+All TrackAstra divisions use EpiCure's native graph and normal division display.
+Inspect additionally queues divisions whose minimum association score is below
+0.9 or whose parent-versus-combined-daughters area ratio exceeds 1.5. Gap repairs
+are queued when their area ratio exceeds 2.0 or displacement exceeds 15 pixels per
+frame. Review flags do not remove graph edges and rerunning replaces them only
+inside the selected range. Existing human classifications and out-of-range events
+remain intact.
+
+A track appearance or disappearance is only an observation. TrackAstra does not
+diagnose ingression, extrusion, or cell fusion; those classifications remain owned
+by EpiCure's Inspect workflow and the user.
+
+Saving writes the native labels, Tracks data, graph, method provenance, correction
+ledger, conflicts, and Inspect events to the normal `epics` folder. It also writes
+`<movie>_lineage.csv`, with columns `label`, `t1`, `t2`, and `parent`, from the
+final committed EpiCure graph. Reopening restores the same identities and lineage.
 
 ## Import/Load tracking
 To use tracking from an external software, the cells need to be labelled by their track number to be loaded in EpiCure. 

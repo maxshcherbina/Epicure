@@ -94,6 +94,20 @@ def test_border_exclusion_uses_one_shared_pixel_distance_rule():
     np.testing.assert_array_equal(labels[0, 3:5, 3:5], excluded[0, 3:5, 3:5])
 
 
+def test_border_exclusion_removes_every_component_of_a_border_label():
+    labels = np.zeros((1, 9, 9), dtype=np.uint32)
+    labels[0, 0, 4] = 1
+    labels[0, 4:6, 4:6] = 1
+    labels[0, 4:6, 2:4] = 2
+
+    excluded = exclude_border_cells(labels, border_size=1)
+
+    assert not np.any(excluded == 1)
+    np.testing.assert_array_equal(
+        excluded[0, 4:6, 2:4], labels[0, 4:6, 2:4]
+    )
+
+
 def test_tracking_proposal_converts_divisions_to_final_epicure_ids():
     labels = np.zeros((2, 8, 8), dtype=np.uint32)
     labels[0, 2:6, 2:6] = 100
