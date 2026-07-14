@@ -1710,7 +1710,7 @@ class Editing( QWidget ):
         ## add extrusion to event list (if active)
         self.epicure.inspecting.add_extrusion( labela, frame )
 
-    def add_division( self, labela, labelb, frame ):
+    def add_division( self, labela, labelb, frame, protect=True ):
         """ Add a division event, given the labels of the two daughter cells """
         if frame == 0:
             if self.epicure.verbose > 0:
@@ -1736,7 +1736,9 @@ class Editing( QWidget ):
             print( "Found parent "+str(parent[0])+" to clicked cells "+str(labela)+" and "+str(labelb) )
         ## add division to graph
         if parent is not None and parent[0] is not None:
-            self.epicure.tracking.add_division( labela, labelb, parent[0] )
+            self.epicure.tracking.add_division(
+                labela, labelb, parent[0], record_correction=protect
+            )
             ## add division to event list (if active)
             self.epicure.inspecting.add_division_event( labela, labelb, parent[0], frame )
             return True

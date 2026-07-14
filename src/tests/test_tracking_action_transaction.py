@@ -651,3 +651,116 @@ def test_forbidden_association_removes_a_proposed_gap_repair(
 
     assert proposal.labels[0, 2, 2] != proposal.labels[2, 3, 2]
     assert proposal.metadata["gap_repairs"] == ()
+
+
+def test_manual_division_add_remove_and_replacement_update_the_ledger(
+    make_napari_viewer, tmp_path
+):
+    epic = _synthetic_epicure(make_napari_viewer, tmp_path)
+    tracking = epic.tracking
+
+    tracking.add_division(20, 31, 30)
+    protected = {
+        "kind": "division",
+        "decision": "protected",
+        "parent": (1, 30),
+        "daughters": ((2, 20), (2, 31)),
+    }
+    assert tracking.correction_ledger == [protected]
+
+    tracking.remove_division(30)
+    assert tracking.correction_ledger == [{**protected, "decision": "forbidden"}]
+    assert tracking.graph == {}
+
+    tracking.add_division(20, 31, 30)
+    assert tracking.correction_ledger == [protected]
+    tracking.remove_division_correction((1, 30), ((2, 20), (2, 31)))
+    assert tracking.correction_ledger == []
+
+
+def test_protected_division_replaces_conflicting_automatic_topology(
+    make_napari_viewer, tmp_path
+):
+    epic = _synthetic_epicure(make_napari_viewer, tmp_path)
+    tracking = epic.tracking
+    labels = np.zeros((2, 10, 10), dtype=np.uint32)
+    labels[0, 2:4, 2:4] = 1
+    labels[0, 6:8, 2:4] = 2
+    labels[1, 2:4, 3:5] = 3
+    labels[1, 5:7, 3:5] = 4
+    labels[1, 7:9, 6:8] = 5
+    result = TrackAstraResult(
+        schema_version=1,
+        trackastra_version="0.5.3",
+        model="general_2d",
+        device="cpu",
+        detections=(
+            Detection(1, 1, 2.5, 2.5),
+            Detection(1, 2, 6.5, 2.5),
+            Detection(2, 3, 2.5, 3.5),
+            Detection(2, 4, 5.5, 3.5),
+            Detection(2, 5, 7.5, 6.5),
+        ),
+        associations=(
+            Association(1, 1, 2, 3, 0.9),
+            Association(1, 2, 2, 4, 0.9),
+        ),
+        divisions=(),
+    )
+    tracking.set_division_correction(
+        (1, 1), ((2, 3), (2, 4)), "protected"
+    )
+    tracking.set_division_correction(
+        (1, 1), ((2, 3), (2, 5)), "protected"
+    )
+
+    first = tracking.proposal_from_trackastra_result(1, 2, labels, result)
+    second = tracking.proposal_from_trackastra_result(1, 2, labels, result)
+
+    assert first.graph == second.graph
+    assert len(first.graph) == 2
+    parent_ids = {tuple(parents) for parents in first.graph.values()}
+    assert len(parent_ids) == 1
+    daughter_ids = set(first.graph)
+    assert first.labels[1, 2, 3] in daughter_ids
+    assert first.labels[1, 7, 6] in daughter_ids
+    assert first.labels[1, 5, 3] not in daughter_ids
+    assert len(tracking.correction_ledger) == 1
+    assert first.metadata["replayed_division_corrections"] == tuple(
+        tracking.correction_ledger
+    )
+
+
+def test_forbidden_division_is_not_resurrected_by_trackastra(
+    make_napari_viewer, tmp_path
+):
+    epic = _synthetic_epicure(make_napari_viewer, tmp_path)
+    tracking = epic.tracking
+    labels = np.zeros((2, 10, 10), dtype=np.uint32)
+    labels[0, 3:5, 3:5] = 1
+    labels[1, 2:4, 2:4] = 2
+    labels[1, 5:7, 5:7] = 3
+    result = TrackAstraResult(
+        schema_version=1,
+        trackastra_version="0.5.3",
+        model="general_2d",
+        device="cpu",
+        detections=(
+            Detection(0, 1, 3.5, 3.5),
+            Detection(1, 2, 2.5, 2.5),
+            Detection(1, 3, 5.5, 5.5),
+        ),
+        associations=(
+            Association(0, 1, 1, 2, 0.9),
+            Association(0, 1, 1, 3, 0.9),
+        ),
+        divisions=(Division(0, 1, 1, 2, 3, 0.9, 0.9),),
+    )
+    tracking.set_division_correction(
+        (0, 1), ((1, 2), (1, 3)), "forbidden"
+    )
+
+    proposal = tracking.proposal_from_trackastra_result(0, 1, labels, result)
+
+    assert proposal.graph == {}
+    assert len(set(proposal.labels[proposal.labels > 0])) == 3

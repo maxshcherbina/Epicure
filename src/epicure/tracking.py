@@ -18,8 +18,11 @@ from epicure.appose_trackastra import TrackAstraResult, run_trackastra
 from epicure.hybrid_tracking import GapRepair, find_constrained_gap_repairs
 from epicure.tracking_corrections import (
     remove_association_correction as remove_correction,
+    remove_division_correction as remove_division_decision,
     reconcile_association_edges,
+    reconcile_division_edges,
     set_association_correction as upsert_correction,
+    set_division_correction as upsert_division,
 )
 from epicure.laptrack_centroids import LaptrackCentroids
 from epicure.tracking_transaction import (
@@ -767,15 +770,36 @@ class Tracking(QWidget):
             return False
         return any( cur_id in vals if isinstance(vals, list) else cur_id in [vals] for vals in self.graph.values() )
 
-    def add_division( self, childa, childb, parent ):
+    def add_division( self, childa, childb, parent, record_correction=True ):
         """ Add info of a division to the graph of divisions/merges """
         if self.graph is None:
             self.graph = {}
+        for child in list(self.graph):
+            if self.graph_parent(child) == parent and child not in {childa, childb}:
+                del self.graph[child]
         self.graph.update({childa: [parent], childb: [parent]})
+        if record_correction:
+            self.set_division_correction(
+                (self.get_last_frame(parent), parent),
+                (
+                    (self.get_first_frame(childa), childa),
+                    (self.get_first_frame(childb), childb),
+                ),
+                "protected",
+            )
 
-    def remove_division( self, parent ):
+    def remove_division( self, parent, record_correction=True ):
         """ Remove a division event from the graph """
+        children = [
+            child for child in (self.graph or {}) if self.graph_parent(child) == parent
+        ]
         self.graph = {key: vals for key, vals in self.graph.items() if not ( self.graph_parent(key) == parent )  }
+        if record_correction and len(children) == 2:
+            self.set_division_correction(
+                (self.get_last_frame(parent), parent),
+                tuple((self.get_first_frame(child), child) for child in children),
+                "forbidden",
+            )
 
     def last_in_graph(self, track_id, frame=None, check_last=True):
         """ Check if given label and frame is the last of a branch, in the graph """
@@ -1113,6 +1137,18 @@ class Tracking(QWidget):
             self.correction_ledger, source, target
         )
 
+    def set_division_correction(self, parent, daughters, decision):
+        """Persist a human division topology decision."""
+        self.correction_ledger = upsert_division(
+            self.correction_ledger, parent, daughters, decision
+        )
+
+    def remove_division_correction(self, parent, daughters):
+        """Deliberately remove a human division decision."""
+        self.correction_ledger = remove_division_decision(
+            self.correction_ledger, parent, daughters
+        )
+
     def proposal_from_trackastra_result(
         self,
         start,
@@ -1168,6 +1204,9 @@ class Tracking(QWidget):
         effective_edges, replayed_corrections = reconcile_association_edges(
             detection_keys, automatic_edges, self.correction_ledger
         )
+        effective_edges, replayed_divisions = reconcile_division_edges(
+            detection_keys, effective_edges, self.correction_ledger
+        )
         outgoing = {}
         incoming = {}
         for source, target in effective_edges:
@@ -1179,9 +1218,7 @@ class Tracking(QWidget):
             raise ValueError("Reconciled detection has more than two children")
 
         division_parents = {
-            source
-            for source in raw_division_parents
-            if len(outgoing.get(source, ())) == 2
+            source for source, children in outgoing.items() if len(children) == 2
         }
 
         track_for_detection = {}
@@ -1235,6 +1272,7 @@ class Tracking(QWidget):
                     if (repair.source, repair.target) in effective_edges
                 ),
                 "replayed_association_corrections": replayed_corrections,
+                "replayed_division_corrections": replayed_divisions,
             },
         )
 

@@ -1273,7 +1273,9 @@ class Inspecting(QWidget):
                         if touched: 
                             ## found neighbor, potential division
                             found = True
-                            if self.epicure.editing.add_division( ctrack, tracks[dind], frame ):
+                            if self.epicure.editing.add_division(
+                                ctrack, tracks[dind], frame, protect=False
+                            ):
                                 ## division added successfully
                                 tracks[dind] = -1 ## track done
                                 break
@@ -1710,5 +1712,4 @@ class Inspecting(QWidget):
                 rows["diff"] = rows["diff"].div(rows["smooth"])
                 if self.epicure.verbose > 2:
                     print(rows)
-
 
