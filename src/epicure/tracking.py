@@ -9,8 +9,16 @@
     The `track_data` table contains the information of all cell center position at each frame. The `Tracks` layer is slow to update so it is updated only when clicking on `Update tracks` in the viewer, but the object `track_data` is keeping the updated information.
 """
 
+from copy import deepcopy
+
 from qtpy.QtWidgets import QVBoxLayout, QWidget # type: ignore
 from epicure.laptrack_centroids import LaptrackCentroids
+from epicure.tracking_transaction import (
+    TrackingProposal,
+    TrackingResult,
+    exclude_border_cells,
+    prepare_tracking_result,
+)
 import epicure.Utils as ut
 laptrack_over = False
 try:    
@@ -53,6 +61,10 @@ class Tracking(QWidget):
         self.tracklayer_name = "Tracks"  ## name of the layer containing tracks
         self.nframes = self.epicure.nframes
         self.properties = ["label", "centroid"]
+        self.tracking_conflicts = []
+        self.correction_ledger = []
+        self.tracking_method_metadata = {}
+        self._tracking_methods = {}
 
         layout = QVBoxLayout()
         
@@ -107,6 +119,9 @@ class Tracking(QWidget):
         self.show_frame_range()
         self.show_trackoptions()
         self.track_choice.currentIndexChanged.connect(self.show_trackoptions)
+        self.register_tracking_method("Laptrack-Centroids", self.laptrack_centroids)
+        if laptrack_over:
+            self.register_tracking_method("Laptrack-Overlaps", self.laptrack_overlaps)
         
 
     def show_frame_range( self ):
@@ -156,6 +171,9 @@ class Tracking(QWidget):
         """ Reset Tracks layer and data """
         self.graph = None
         self.track_data = None
+        self.tracking_conflicts = []
+        self.correction_ledger = []
+        self.tracking_method_metadata = {}
         ut.remove_layer( self.viewer, "Tracks" )
 
     def init_tracks(self, track_table=None, track_prop=None ):
@@ -827,10 +845,77 @@ class Tracking(QWidget):
         
         if self.track_choice.currentText() == "Laptrack-Overlaps":
             return self.laptrack_overlaps_twoframes(labels, twoframes, loose=True)
-        
+
+    def register_tracking_method(self, name, adapter):
+        """Register an adapter that returns a method-neutral tracking proposal."""
+        self._tracking_methods[name] = adapter
+
+    def _snapshot_tracking_state(self):
+        inspecting = self.epicure.inspecting
+        events = inspecting.events
+        return {
+            "labels": np.copy(self.epicure.seg),
+            "graph": deepcopy(self.graph),
+            "track_data": None if self.track_data is None else np.copy(self.track_data),
+            "tracked": self.epicure.tracked,
+            "conflicts": deepcopy(self.tracking_conflicts),
+            "correction_ledger": deepcopy(self.correction_ledger),
+            "metadata": deepcopy(self.tracking_method_metadata),
+            "events_data": None if events is None else np.copy(events.data),
+            "events_properties": None if events is None else deepcopy(events.properties),
+            "event_types": deepcopy(inspecting.event_types),
+        }
+
+    def _restore_tracking_state(self, snapshot):
+        self.epicure.seg = snapshot["labels"]
+        self.epicure.seglayer.data = snapshot["labels"]
+        self.graph = snapshot["graph"]
+        self.track_data = snapshot["track_data"]
+        self.epicure.tracked = snapshot["tracked"]
+        self.tracking_conflicts = snapshot["conflicts"]
+        self.correction_ledger = snapshot["correction_ledger"]
+        self.tracking_method_metadata = snapshot["metadata"]
+        if self.tracklayer is not None and self.track_data is not None:
+            self.tracklayer.data = self.track_data
+            self.tracklayer.graph = self.graph or {}
+            self.tracklayer.refresh()
+            self.color_tracks_as_labels()
+        events = self.epicure.inspecting.events
+        if events is not None and snapshot["events_data"] is not None:
+            events.data = snapshot["events_data"]
+            events.properties = snapshot["events_properties"]
+            events.refresh()
+        self.epicure.inspecting.event_types = snapshot["event_types"]
+        self.epicure.inspecting.update_nevents_display()
+
+    def _commit_tracking_result(self, result: TrackingResult):
+        self.epicure.seg = result.labels
+        self.epicure.seglayer.data = result.labels
+        self.graph = result.graph
+        self.tracking_conflicts = list(result.conflicts)
+        self.tracking_method_metadata = {
+            "method": result.method,
+            "range": result.tracking_range,
+        }
+
+        track_table, track_properties = self.create_tracks()
+        self.track_data = track_table
+        if self.tracklayer is None or self.tracklayer_name not in self.viewer.layers:
+            self.init_tracks(track_table, track_properties)
+        else:
+            self.tracklayer.data = track_table
+            self.tracklayer.properties = track_properties
+            self.tracklayer.graph = self.graph or {}
+            self.track_data = self.tracklayer.data
+            self.tracklayer.refresh()
+            self.color_tracks_as_labels()
+
+        self.epicure.tracked = 1
+        self.epicure.updates_after_tracking()
+
 
     def do_tracking(self):
-        """ Start the tracking with the selected options """
+        """Build, validate, and atomically commit the selected tracking method."""
         if self.frame_range.isChecked():
             start = self.start_frame.value()
             end = self.end_frame.value()
@@ -839,22 +924,30 @@ class Tracking(QWidget):
             end = self.nframes-1
         start_time = ut.start_time()
         self.viewer.window._status_bar._toggle_activity_dock(True)
-        self.epicure.inspecting.reset_all_events()
-        
-        if self.track_choice.currentText() == "Laptrack-Centroids":
-            if self.epicure.verbose > 1:
-                print("Starting track with Laptrack-Centroids")
-            self.laptrack_centroids( start, end )
-            self.epicure.tracked = 1
-        if self.track_choice.currentText() == "Laptrack-Overlaps":
-            if self.epicure.verbose > 1:
-                print("Starting track with Laptrack-Centroids")
-            self.laptrack_overlaps( start, end )
-            self.epicure.tracked = 1
-        
-        self.epicure.finish_update(contour=2)
-        #self.epicure.reset_free_label()
-        self.viewer.window._status_bar._toggle_activity_dock(False)
+        snapshot = self._snapshot_tracking_state()
+        try:
+            method = self.track_choice.currentText()
+            if method not in self._tracking_methods:
+                raise ValueError(f"Unknown tracking method: {method}")
+            border_size = int(self.epicure.editing.border_size.text())
+            source_labels = exclude_border_cells(
+                np.copy(self.epicure.seg[start : end + 1]), border_size
+            )
+            proposal = self._tracking_methods[method](start, end, source_labels)
+            if not isinstance(proposal, TrackingProposal):
+                raise TypeError(f"Tracking method {method} did not return a proposal")
+            if not np.array_equal(proposal.source_labels, source_labels):
+                raise ValueError(
+                    f"Tracking method {method} changed the authoritative source labels"
+                )
+            result = prepare_tracking_result(self.epicure.seg, self.graph, proposal)
+            self._commit_tracking_result(result)
+            self.epicure.finish_update(contour=2)
+        except BaseException:
+            self._restore_tracking_state(snapshot)
+            raise
+        finally:
+            self.viewer.window._status_bar._toggle_activity_dock(False)
         if self.epicure.verbose > 0:
             ut.show_duration( start_time, header="Tracking done in " )
 
@@ -967,15 +1060,30 @@ class Tracking(QWidget):
     
     def labels_to_centroids( self, start_frame, end_frame ):
         """ Get centroids of each cell in dataframe """
+        return self.labels_to_centroids_array(
+            self.epicure.seg[start_frame : end_frame + 1], start_frame
+        )
+
+    def labels_to_centroids_array(self, labels, start_frame):
+        """Get centroid rows for a detached label range using global frame numbers."""
         regionprops = [
             result
-            for frame in range(start_frame, end_frame + 1)
-            if (result := self.label_to_dataframe(self.epicure.seg[frame], frame)) is not None
+            for offset, label_frame in enumerate(labels)
+            if (
+                result := self.label_to_dataframe(
+                    label_frame, start_frame + offset
+                )
+            )
+            is not None
         ]
+        if not regionprops:
+            raise ValueError("No detections remain in the selected tracking range")
         return pd.concat(regionprops)
     
-    def labels_to_centroids_flow(self, start_frame, end_frame):
+    def labels_to_centroids_flow(self, start_frame, end_frame, labels=None):
         """ Get centroids of each cell in dataframe """
+        if labels is None:
+            labels = self.epicure.seg[start_frame : end_frame + 1]
         regionprops = []    
         radius = float( self.drift_radius.text() )
         if self.epicure.verbose > 1:
@@ -995,19 +1103,25 @@ class Tracking(QWidget):
                         flow_v = flow_v + v
                         flow_u = flow_u + u
                 prev_movie = cur_movie
-            clabel = self.epicure.seg[frame]  
+            clabel = labels[frame - start_frame]
             df = self.label_to_dataframe( clabel, frame )
+            if df is None:
+                continue
             if flow_v is not None:
                 c0 = np.array( np.floor( df["centroid-0"] ), dtype="uint8" )
                 c1 = np.array( np.floor( df["centroid-1"] ), dtype="uint8" )
                 df["centroid-0"] = df["centroid-0"] - flow_v[c0,c1]
                 df["centroid-1"] = df["centroid-1"] - flow_u[c0,c1]
             regionprops.append(df)
+        if not regionprops:
+            raise ValueError("No detections remain in the selected tracking range")
         regionprops_df = pd.concat(regionprops)
         return regionprops_df
     
-    def labels_flow(self, start_frame, end_frame ):
+    def labels_flow(self, start_frame, end_frame, labels=None):
         """ Get registered label image corrected for optical flow """
+        if labels is None:
+            labels = self.epicure.seg[start_frame : end_frame + 1]
         radius = float( self.drift_radius.text() )
         flow_v = None
         prev_movie = None
@@ -1023,7 +1137,7 @@ class Tracking(QWidget):
                     flow_v = flow_v + v
                     flow_u = flow_u + u
             prev_movie = cur_movie
-            clabel = np.copy( self.epicure.seg[frame] ) 
+            clabel = np.copy(labels[frame - start_frame])
             if flow_v is not None:         
                 clabel = self.apply_flow( flow_v, flow_u, clabel )
             res_labels.append( clabel )
@@ -1086,6 +1200,49 @@ class Tracking(QWidget):
         self.epicure.updates_after_tracking()
         progress_bar.update(indprogress+3)
         return graph
+
+    def proposal_from_dataframes(
+        self,
+        start,
+        end,
+        source_labels,
+        track_df,
+        split_df,
+        merge_df,
+        method,
+    ):
+        """Convert LapTrack tables into the method-neutral proposal interface."""
+        tracks = track_df.copy()
+        if "frame_y" in tracks.keys():
+            tracks["frame"] = tracks["frame_y"]
+        proposed_labels = np.zeros_like(source_labels)
+        for row in tracks.itertuples(index=False):
+            frame = int(getattr(row, "frame"))
+            label = int(getattr(row, "label"))
+            local_track_id = int(getattr(row, "track_id")) + 1
+            offset = frame - start
+            if offset < 0 or offset >= len(source_labels):
+                raise ValueError("LapTrack returned a detection outside the selected range")
+            mask = source_labels[offset] == label
+            if not np.any(mask):
+                raise ValueError("LapTrack returned an unknown segmentation detection")
+            proposed_labels[offset][mask] = local_track_id
+
+        split_graph = split_df.copy()
+        merge_graph = merge_df.copy()
+        if len(split_graph) > 0:
+            split_graph[["parent_track_id", "child_track_id"]] += 1
+        if len(merge_graph) > 0:
+            merge_graph[["parent_track_id", "child_track_id"]] += 1
+        graph = to_napari_graph(split_graph, merge_graph)
+        return TrackingProposal(
+            start_frame=start,
+            end_frame=end,
+            source_labels=source_labels,
+            labels=proposed_labels,
+            graph=graph,
+            method=method,
+        )
 
 ############ Laptrack centroids option
     
@@ -1151,8 +1308,8 @@ class Tracking(QWidget):
         df1 = self.label_to_dataframe( img[1], 1 )
         return pd.concat([df0, df1])
     
-    def laptrack_centroids(self, start, end):
-        """ Perform track with laptrack option and chosen parameters """
+    def laptrack_centroids(self, start, end, source_labels):
+        """Return a centroid-based LapTrack proposal without mutating live state."""
         ## Laptrack tracker
         laptrack = LaptrackCentroids(self, self.epicure)
         laptrack.max_distance = float(self.max_dist.text())
@@ -1173,20 +1330,26 @@ class Tracking(QWidget):
             print("Convert labels to centroids: use track info ?")
         self.undrifted = False
         if self.drift_correction.isChecked():
-            df = self.labels_to_centroids_flow( start, end )
+            df = self.labels_to_centroids_flow(start, end, source_labels)
         else:
-            df = self.labels_to_centroids( start, end )
+            df = self.labels_to_centroids_array(source_labels, start)
         progress_bar.update(1)
         if self.epicure.verbose > 1:
             print("GO tracking")
         progress_bar.set_description( "Do tracking with LapTrack Centroids" )
         track_df, split_df, merge_df = laptrack.track_centroids(df)
         progress_bar.update(2)
-        if self.epicure.verbose > 1:
-            print("After tracking, update everything")
-        self.after_tracking(track_df, split_df, merge_df, progress_bar, 2)
         progress_bar.update(6)
         progress_bar.close()
+        return self.proposal_from_dataframes(
+            start,
+            end,
+            source_labels,
+            track_df,
+            split_df,
+            merge_df,
+            "Laptrack-Centroids",
+        )
     
 ############ Laptrack overlap option
 
@@ -1204,8 +1367,8 @@ class Tracking(QWidget):
 
         self.gLapOverlap.setLayout(glap_layout)
 
-    def laptrack_overlaps(self, start, end):
-        """ Perform track with laptrack overlap option and chosen parameters """
+    def laptrack_overlaps(self, start, end, source_labels):
+        """Return an overlap-based LapTrack proposal without mutating live state."""
         ## Laptrack tracker
         laptrack = LaptrackOverlaps(self, self.epicure)
         miniou = float(self.min_iou.text())
@@ -1218,23 +1381,28 @@ class Tracking(QWidget):
 
         progress_bar = progress(total=6)
         progress_bar.set_description( "Prepare tracking" )
-        labels = self.labels_ready( start, end )
+        labels = source_labels
+        if self.drift_correction.isChecked():
+            labels = self.labels_flow(start, end, source_labels)
         self.undrifted = False
         progress_bar.update(1)
         progress_bar.set_description( "Do tracking with LapTrack Overlaps" )
         track_df, split_df, merge_df = laptrack.track_overlaps( labels )
         progress_bar.update(2)
-        
-        ## get dataframe of coordinates to create the graph 
-        df = self.labels_to_centroids( start, end )
-        self.undrifted = True
+        track_df = track_df.copy()
+        track_df["frame"] += start
         progress_bar.update(3)
-        coordinate_df = df.set_index(["frame", "label"])
-        tdf = track_df.set_index(["frame", "label"])
-        track_df2 = pd.merge( tdf, coordinate_df, right_index=True, left_index=True).reset_index()
-        self.after_tracking( track_df2, split_df, merge_df, progress_bar, 3 )
         progress_bar.update(6)
         progress_bar.close()
+        return self.proposal_from_dataframes(
+            start,
+            end,
+            source_labels,
+            track_df,
+            split_df,
+            merge_df,
+            "Laptrack-Overlaps",
+        )
     
     def laptrack_overlaps_twoframes(self, labels, twoframes, loose=False):
         """ Perform tracking of two frames with strict parameters """
@@ -1249,5 +1417,3 @@ class Tracking(QWidget):
         laptrack.merging_cost = False ## disable merging option
         parent_labels = laptrack.twoframes_track(twoframes, labels)
         return parent_labels
-
-

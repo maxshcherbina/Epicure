@@ -7,7 +7,7 @@
 
 import numpy as np
 import edt # type: ignore
-from skimage.segmentation import watershed, clear_border, find_boundaries, random_walker
+from skimage.segmentation import watershed, find_boundaries, random_walker
 from skimage.measure import label, points_in_poly
 from skimage.morphology import binary_closing, binary_opening, binary_dilation, binary_erosion, disk
 from qtpy.QtWidgets import QWidget # type: ignore
@@ -19,6 +19,7 @@ from napari.utils import progress # type: ignore
 from napari.qt.threading import thread_worker # type: ignore
 import epicure.Utils as ut
 import epicure.epiwidgets as wid
+from epicure.tracking_transaction import exclude_border_cells
 
 class Editing( QWidget ):
     """ Handle user interaction to edit the segmentation """
@@ -992,27 +993,11 @@ class Editing( QWidget ):
         start_time = ut.start_time()
         self.viewer.window._status_bar._toggle_activity_dock(True)
         size = int(self.border_size.text())
-        if size == 0:
-            for i in progress(range(0, self.epicure.nframes)):
-                img = np.copy( self.epicure.seglayer.data[i] )
-                resimg = clear_border( img )
-                self.epicure.seglayer.data[i] = resimg
-                self.epicure.removed_labels( img, resimg, i )
-        else:
-            maxx = self.epicure.imgshape2D[0] - size - 1
-            maxy = self.epicure.imgshape2D[1] - size - 1
-            for i in progress(range(0, self.epicure.nframes)):
-                frame = self.epicure.seglayer.data[i]
-                img = np.copy( frame ) 
-                crop_img = img[ size:maxx, size:maxy ]
-                crop_img = clear_border( crop_img )
-                frame[0:size, :] = 0
-                frame[:, 0:size] = 0
-                frame[maxx:, :] = 0
-                frame[:, maxy:] = 0
-                frame[size:maxx, size:maxy] = crop_img
-                ## update the tracks after the potential disappearance of some cells
-                self.epicure.removed_labels( img, frame, i )
+        excluded = exclude_border_cells(self.epicure.seglayer.data, size)
+        for i in progress(range(0, self.epicure.nframes)):
+            img = np.copy(self.epicure.seglayer.data[i])
+            self.epicure.seglayer.data[i] = excluded[i]
+            self.epicure.removed_labels(img, excluded[i], i)
         
         self.viewer.window._status_bar._toggle_activity_dock(False)
         self.epicure.seglayer.refresh()
@@ -2336,5 +2321,4 @@ class ClassifyEvent( QWidget ):
     def classify( self ):
         """ Add all the cell that finish with the selected event to the group """
         self.edit.group_event_cells( self.event_choice.currentText() )
-
 

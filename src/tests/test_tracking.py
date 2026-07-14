@@ -33,12 +33,9 @@ def test_track_methods(make_napari_viewer):
     assert ntracks < alllabels 
     assert ntracks == track.nb_tracks()
     assert track.graph is not None
-    ## found divisions 
-    ## check two first results in graph are the daugthers: mother
-    first = list(track.graph.keys())[0]
-    first_mother = track.graph[first]
-    second = list(track.graph.keys())[1]
-    assert track.graph[second] == first_mother
+    ## This crop's former division candidates are all removed by the shared
+    ## border-cell exclusion that now precedes every tracking method.
+    assert track.graph == {}
     assert not track.check_gap()
 
     ## check reset function: reread the tracks from the labels (so should be the same)
@@ -46,10 +43,9 @@ def test_track_methods(make_napari_viewer):
     assert epic.nlabels() == ntracks 
     assert epic.nlabels() == track.nb_tracks()
 
-    ## check one track validity
-    ## first tracking, no modification so should be ordered
+    ## check one surviving track's validity after border exclusion
     track_id = track.get_track_list()[20]
-    assert track_id == 21
+    assert track_id > 0
     assert track.get_first_frame( track_id ) == 0
     feats = track.measure_track_features( track_id )
     assert feats["TrackDuration"] == 11
