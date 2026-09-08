@@ -338,3 +338,31 @@ def test_appose_adapter_rejects_non_arm64_hosts_before_provisioning():
 
     assert not fake_appose.service.closed
     assert fake_appose.shared_arrays == []
+
+
+def test_cleanup_failure_does_not_mask_allocation_failure(monkeypatch):
+    fake = _FakeAppose(_FakeTask(_valid_response()))
+    def allocation_failure(*args):
+        raise MemoryError('shared memory exhausted')
+    def close_unstarted():
+        raise RuntimeError('Service has not been started')
+    monkeypatch.setattr(fake, 'NDArray', allocation_failure)
+    monkeypatch.setattr(fake.service, 'close', close_unstarted)
+    movie, masks = _movie_and_segmentations()
+    with pytest.raises(TrackAstraWorkerError) as error:
+        run_trackastra(movie, masks, start_frame=12, worker=_appose_worker(fake))
+    assert isinstance(error.value.__cause__, MemoryError)
+    assert 'shared memory exhausted' in str(error.value.__cause__)
+
+
+def test_successful_worker_reports_cleanup_error_inside_callers_except(monkeypatch):
+    fake = _FakeAppose(_FakeTask(_valid_response()))
+    def close_failure():
+        raise RuntimeError('close failed')
+    monkeypatch.setattr(fake.service, 'close', close_failure)
+    movie, masks = _movie_and_segmentations()
+    try:
+        raise ValueError('unrelated caller exception')
+    except ValueError:
+        with pytest.raises(TrackAstraWorkerError, match='could not be closed'):
+            run_trackastra(movie, masks, start_frame=12, worker=_appose_worker(fake))

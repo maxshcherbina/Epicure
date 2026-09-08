@@ -13,3 +13,19 @@ Then `appose` puts the raw movie in memory shared between the two python process
 On macOS the model runs on the MPS backend (Apple GPU) if available, otherwise on CPU. macOS arm64 is the tested target. A Linux/Windows GPU environment is stubbed in the pixi spec but is not yet configured with a CUDA-specific PyTorch build, so it currently resolves to the same CPU packages; wiring a real CUDA target is future work.
 
 Thanks to that set-up, you only have to click the button and wait. EpiCure saves the result automatically in the segmentation file default location (`<movie>_cellpose.tif`) so it is ready to use.
+
+## Continue with TrackAstra
+
+1. After segmentation finishes, click **START CURE** to open the masks in EpiCure.
+2. Check the cell boundaries and correct missed or merged cells before tracking.
+3. Open **Track**, choose **TrackAstra**, and click **Track**. The integrated worker
+   supports Apple Silicon Macs and provisions its environment automatically.
+4. Review divisions and flagged links in **Inspect**. TrackAstra associates the
+   existing masks; it cannot repair a missed segmentation. **Gap-closing frames**
+   set to 5 allows links across up to four missing frames; 1 disables gap repair.
+5. Save the project to preserve the labels and your tracking corrections.
+   A lineage CSV is also saved in the movie's `epics` folder.
+
+For a trial run, enable **Track only some frames**. If the Track tab reports a
+boundary conflict, expand the selected range so the affected tracks can be
+recomputed together. See [Track](Track.md) for correction and rerun controls.

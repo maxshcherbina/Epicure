@@ -29,6 +29,7 @@ from epicure.inspecting import Inspecting
 from epicure.outputing import Outputing
 from epicure.displaying import Displaying
 from epicure.preferences import Preferences
+from epicure.tracking_identity import detection_mapping
 from epicure.tracking_persistence import (
     restore_tracking_state,
     serialize_tracking_state,
@@ -1138,16 +1139,28 @@ class EpiCure:
     def replace_label(self, label, new_label, start_frame=0):
         """Replace label with new_label from start_frame - Relabelling only"""
         indmodif = self.get_label_indexes(label, start_frame)
+        if len(indmodif) == 0:
+            return
         new_labels = [new_label] * len(indmodif)
         self.change_labels(indmodif, new_labels, replacing=True)
+        self.tracking.remap_detection_references({
+            (int(frame), int(label)): ((int(frame), int(new_label)) if new_label > 0 else None)
+            for frame in np.unique(np.asarray(indmodif)[:, 0])
+        })
 
     def change_labels_frommerge(self, indmodif, new_labels, remove_labels):
         """Change the value at pixels indmodif to new_labels and update tracks/graph. Full remove of the two merged labels"""
         if len(indmodif) > 0:
+            first = int(np.min(np.asarray(indmodif)[:, 0]))
+            last = int(np.max(np.asarray(indmodif)[:, 0]))
+            before = self.seg[first:last + 1].copy()
             ## get effectively changed labels
             indmodif, new_labels, _ = ut.setNewLabel(self.seglayer, indmodif, new_labels, add_frame=None, return_old=False)
             if len(new_labels) > 0:
                 self.update_added_labels(indmodif, new_labels)
+                self.tracking.remap_detection_references(detection_mapping(
+                    before, self.seg[first:last + 1], first, allow_partial=True
+                ))
                 self.update_removed_labels(indmodif, remove_labels)
         self.seglayer.refresh()
 

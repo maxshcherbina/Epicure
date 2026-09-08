@@ -54,15 +54,17 @@ def _entries(ledger):
     return []
 
 
-def _range_and_missing(detections, endpoints):
-    frames = [frame for frame, _label in detections]
-    tracking_range = min(frames), max(frames)
+def _range_and_missing(detections, endpoints, tracking_range=None, missing_endpoints=()):
+    if tracking_range is None:
+        frames = [frame for frame, _label in detections]
+        tracking_range = (min(frames), max(frames)) if frames else (0, -1)
     in_range = [
         endpoint
         for endpoint in endpoints
         if tracking_range[0] <= endpoint[0] <= tracking_range[1]
     ]
-    return tracking_range, tuple(endpoint for endpoint in in_range if endpoint not in detections)
+    missing = {tuple(item) for item in missing_endpoints}
+    return tracking_range, tuple(endpoint for endpoint in in_range if endpoint not in detections or endpoint in missing)
 
 
 def _endpoint_conflict(entry, endpoints, tracking_range, missing):
@@ -75,13 +77,14 @@ def _endpoint_conflict(entry, endpoints, tracking_range, missing):
         endpoints=labels,
         message=(
             f"{entry['kind'].title()} correction was retained but could not be "
-            "replayed; edit its endpoints or dismiss the correction."
+            "replayed; dismiss the correction and add the intended relationship again."
         ),
         correction_kind=entry["kind"],
         decision=entry["decision"],
         detection_endpoints=tuple(endpoints),
         tracking_range=tracking_range,
         reason=reason,
+        missing_endpoints=tuple(missing),
     )
 
 
@@ -174,7 +177,7 @@ def remove_division_correction(ledger, parent, daughters):
     ]
 
 
-def reconcile_association_edges(detection_keys, automatic_edges, ledger):
+def reconcile_association_edges(detection_keys, automatic_edges, ledger, *, tracking_range=None):
     """Replay valid decisions as hard winners over automatic associations."""
     detections = {_detection_key(key) for key in detection_keys}
     edges = {
@@ -191,7 +194,7 @@ def reconcile_association_edges(detection_keys, automatic_edges, ledger):
             continue
         source = _detection_key(raw_entry["source"])
         target = _detection_key(raw_entry["target"])
-        tracking_range, missing = _range_and_missing(detections, (source, target))
+        tracking_range, missing = _range_and_missing(detections, (source, target), tracking_range, raw_entry.get("missing_endpoints", ()))
         if missing:
             conflicts.append(
                 _endpoint_conflict(raw_entry, (source, target), tracking_range, missing)
@@ -212,7 +215,7 @@ def reconcile_association_edges(detection_keys, automatic_edges, ledger):
     return tuple(sorted(edges)), tuple(applied), tuple(conflicts)
 
 
-def reconcile_division_edges(detection_keys, automatic_edges, ledger):
+def reconcile_division_edges(detection_keys, automatic_edges, ledger, *, tracking_range=None):
     """Replay valid division topology after association reconciliation."""
     detections = {_detection_key(key) for key in detection_keys}
     edges = set(automatic_edges)
@@ -230,7 +233,7 @@ def reconcile_division_edges(detection_keys, automatic_edges, ledger):
         parent = entry["parent"]
         daughters = entry["daughters"]
         endpoints = (parent, *daughters)
-        tracking_range, missing = _range_and_missing(detections, endpoints)
+        tracking_range, missing = _range_and_missing(detections, endpoints, tracking_range, raw_entry.get("missing_endpoints", ()))
         if missing:
             conflicts.append(
                 _endpoint_conflict(raw_entry, endpoints, tracking_range, missing)

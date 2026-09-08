@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from importlib import resources
 import platform
+import logging
 from typing import Any, Callable, Mapping, Protocol, Sequence
 
 import appose
@@ -500,6 +501,7 @@ class ApposeTrackAstraWorker:
             "pixi_trackastra.toml"
         )
         service = None
+        failed = True
         try:
             _emit_progress(progress, "Preparing the TrackAstra environment", 0, 1)
             builder = self._appose.pixi(manifest)
@@ -547,6 +549,7 @@ class ApposeTrackAstraWorker:
                 _wait_for_task(task, cancel_requested)
                 response = dict(task.outputs)
                 _emit_progress(progress, "TrackAstra complete", 1, 1)
+                failed = False
                 return response
         except TrackAstraCancelled:
             raise
@@ -560,7 +563,12 @@ class ApposeTrackAstraWorker:
             ) from exc
         finally:
             if service is not None:
-                service.close()
+                try:
+                    service.close()
+                except Exception as exc:
+                    if not failed:
+                        raise TrackAstraWorkerError("TrackAstra service could not be closed.") from exc
+                    logging.getLogger(__name__).warning("TrackAstra cleanup failed", exc_info=True)
 
     def _require_apple_arm64(self) -> None:
         system = self._system()

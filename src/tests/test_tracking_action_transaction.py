@@ -272,15 +272,12 @@ def test_laptrack_centroids_runs_through_the_range_safe_transaction(
     tracking.end_frame.setValue(2)
     epic.editing.border_size.setText("1")
 
-    tracking.do_tracking()
+    with pytest.raises(ValueError, match="Expand the tracking range"):
+        tracking.do_tracking()
 
-    np.testing.assert_array_equal(epic.seg[0], before[0])
-    np.testing.assert_array_equal(epic.seg[3], before[3])
-    assert 90 not in epic.seg[1]
-    assert 91 not in epic.seg[2]
-    assert epic.seg[1, 5, 5] == epic.seg[2, 5, 5]
-    assert epic.seg[1, 2, 2] == 10
-    assert epic.seg[2, 6, 2] == 20
+    np.testing.assert_array_equal(epic.seg, before)
+    assert not tracking.conflict_status.isHidden()
+    assert tracking.dismiss_conflict.isHidden()
     assert [conflict.kind for conflict in tracking.tracking_conflicts] == [
         "range-boundary-identity"
     ]

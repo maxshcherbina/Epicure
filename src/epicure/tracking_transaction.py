@@ -7,6 +7,8 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
+from epicure.tracking_identity import detection_mapping, remap_references
+
 
 Graph = Mapping[int, int | Sequence[int]]
 
@@ -23,6 +25,16 @@ class TrackingConflict:
     detection_endpoints: tuple[tuple[int, int], ...] = ()
     tracking_range: tuple[int, int] | None = None
     reason: str = ""
+    missing_endpoints: tuple[tuple[int, int], ...] = ()
+
+
+class TrackingBoundaryError(ValueError):
+    """The selected range cannot be reconciled without changing preserved tracks."""
+
+    def __init__(self, conflicts):
+        self.conflicts = tuple(conflicts)
+        super().__init__("Tracking range conflicts with preserved identities or lineage. "
+                         "Expand the tracking range and try again; existing tracks were not changed.")
 
 
 @dataclass(frozen=True)
@@ -48,6 +60,7 @@ class TrackingResult:
     method: str
     tracking_range: tuple[int, int]
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    detection_mapping: Mapping = field(default_factory=dict)
 
 
 def _positive_ids(labels: np.ndarray) -> set[int]:
@@ -122,11 +135,7 @@ def _preferred_source_id(proposal: TrackingProposal, local_id: int) -> int:
 
 def _assign_track_ids(
     current: np.ndarray, proposal: TrackingProposal
-) -> tuple[
-    dict[int, int],
-    tuple[tuple[int, int], ...],
-    tuple[TrackingConflict, ...],
-]:
+) -> dict[int, int]:
     before = current[: proposal.start_frame]
     after = current[proposal.end_frame + 1 :]
     outside_ids = _positive_ids(before) | _positive_ids(after)
@@ -134,8 +143,6 @@ def _assign_track_ids(
     anchors = _boundary_anchors(current, proposal)
     assigned: dict[int, int] = {}
     claimed: set[int] = set()
-    boundary_overrides: list[tuple[int, int]] = []
-    conflicts: list[TrackingConflict] = []
 
     next_id = max(_positive_ids(current) | set(local_ids) | {0}) + 1
 
@@ -147,34 +154,26 @@ def _assign_track_ids(
         next_id += 1
         return value
 
+    owners = {}
     for local_id in local_ids:
-        candidates = sorted(set(anchors.get(local_id, ())))
-        anchor_ids = [source_id for _, source_id in candidates]
-        if len(set(anchor_ids)) > 1:
-            conflicts.append(
-                TrackingConflict(
-                    kind="range-boundary-identity",
-                    endpoints=tuple(dict.fromkeys(anchor_ids)),
-                    message=(
-                        "One proposed track connects different preserved identities at "
-                        "the tracking-range boundaries"
-                    ),
-                )
-            )
-            boundary_overrides.extend(candidates)
-        available = [source_id for source_id in anchor_ids if source_id not in claimed]
-        if available:
-            final_id = available[0]
+        anchor_ids = {source_id for _, source_id in anchors.get(local_id, ())}
+        if len(anchor_ids) > 1 or any(source_id in owners for source_id in anchor_ids):
+            raise TrackingBoundaryError((TrackingConflict(
+                kind="range-boundary-identity", endpoints=tuple(sorted(anchor_ids)),
+                message="Competing identities at the tracking-range boundaries. Expand the range.",
+                tracking_range=(proposal.start_frame, proposal.end_frame),
+            ),))
+        for source_id in anchor_ids:
+            owners[source_id] = local_id
+        if anchor_ids:
+            final_id = next(iter(anchor_ids))
         else:
             preferred = _preferred_source_id(proposal, local_id)
-            if preferred not in outside_ids and preferred not in claimed:
-                final_id = preferred
-            else:
-                final_id = allocate()
+            final_id = preferred if preferred not in outside_ids and preferred not in claimed else allocate()
         assigned[local_id] = final_id
         claimed.add(final_id)
 
-    return assigned, tuple(boundary_overrides), tuple(conflicts)
+    return assigned
 
 
 def _validate_proposal(current: np.ndarray, proposal: TrackingProposal) -> None:
@@ -268,33 +267,50 @@ def prepare_tracking_result(
 
     current = np.asarray(current_labels)
     _validate_proposal(current, proposal)
-    id_mapping, boundary_overrides, id_conflicts = _assign_track_ids(
-        current, proposal
-    )
+    id_mapping = _assign_track_ids(current, proposal)
 
     result = current.copy()
     relabeled = np.zeros_like(proposal.labels, dtype=result.dtype)
     for local_id, final_id in id_mapping.items():
         relabeled[proposal.labels == local_id] = final_id
-    for boundary, source_id in boundary_overrides:
-        proposal_index = 0 if boundary == 0 else -1
-        source_mask = proposal.source_labels[proposal_index] == source_id
-        relabeled[proposal_index][source_mask] = source_id
     result[proposal.start_frame : proposal.end_frame + 1] = relabeled
 
     merged_graph, graph_conflicts = _merge_graph(
         current, result, graph, proposal, id_mapping
     )
 
+    lifetimes = {}
+    affected_ids = set()
+    for frame, labels in enumerate(result):
+        ids = _positive_ids(labels)
+        if proposal.start_frame <= frame <= proposal.end_frame:
+            affected_ids.update(ids)
+        for label in ids:
+            first, _last = lifetimes.get(label, (frame, frame))
+            lifetimes[label] = (first, frame)
+    for child, parents in merged_graph.items():
+        # Preserve unrelated legacy relationships outside this run.
+        if not affected_ids.intersection((child, *parents)):
+            continue
+        child_start = lifetimes[child][0]
+        if any(lifetimes[parent][1] >= child_start for parent in parents):
+            raise TrackingBoundaryError((TrackingConflict(
+                kind="range-boundary-relationship", endpoints=(child, *parents),
+                message="A parent would continue after its child starts. Expand the tracking range.",
+                tracking_range=(proposal.start_frame, proposal.end_frame),
+            ),))
+
+    mapping = detection_mapping(current[proposal.start_frame:proposal.end_frame + 1],
+                                relabeled, proposal.start_frame)
     return TrackingResult(
         labels=result,
         graph=merged_graph,
-        conflicts=(
-            *id_conflicts,
+        conflicts=remap_references((
             *graph_conflicts,
             *tuple(proposal.metadata.get("correction_conflicts", ())),
-        ),
+        ), mapping),
         method=proposal.method,
         tracking_range=(proposal.start_frame, proposal.end_frame),
-        metadata=dict(proposal.metadata),
+        metadata=remap_references(dict(proposal.metadata), mapping),
+        detection_mapping=mapping,
     )

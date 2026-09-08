@@ -26,11 +26,13 @@ from epicure.tracking_corrections import (
 )
 from epicure.laptrack_centroids import LaptrackCentroids
 from epicure.tracking_transaction import (
+    TrackingBoundaryError,
     TrackingProposal,
     TrackingResult,
     exclude_border_cells,
     prepare_tracking_result,
 )
+from epicure.tracking_identity import remap_references
 import epicure.Utils as ut
 laptrack_over = False
 try:    
@@ -930,6 +932,7 @@ class Tracking(QWidget):
             "conflicts": deepcopy(self.tracking_conflicts),
             "correction_ledger": deepcopy(self.correction_ledger),
             "metadata": deepcopy(self.tracking_method_metadata),
+            "groups": deepcopy(self.epicure.groups),
             "events_data": None if events is None else np.copy(events.data),
             "events_properties": None if events is None else deepcopy(events.properties),
             "event_types": deepcopy(inspecting.event_types),
@@ -945,6 +948,8 @@ class Tracking(QWidget):
         self.update_conflict_status()
         self.correction_ledger = snapshot["correction_ledger"]
         self.tracking_method_metadata = snapshot["metadata"]
+        self.epicure.groups = snapshot["groups"]
+        self.epicure.update_group_lists()
         if self.tracklayer is not None and self.track_data is not None:
             self.tracklayer.data = self.track_data
             self.tracklayer.graph = self.graph or {}
@@ -958,7 +963,58 @@ class Tracking(QWidget):
         self.epicure.inspecting.event_types = snapshot["event_types"]
         self.epicure.inspecting.update_nevents_display()
 
+    def remap_detection_references(self, mapping, tracking_range=None):
+        """Keep human decisions and review evidence attached to the same detections."""
+        self.correction_ledger = remap_references(self.correction_ledger, mapping, tracking_range)
+        self.tracking_conflicts = remap_references(self.tracking_conflicts, mapping)
+        self.tracking_method_metadata = remap_references(self.tracking_method_metadata, mapping)
+
+    def _remap_tracking_annotations(self, result):
+        """Move annotations with retained cells and remove references to excluded cells."""
+        mapping = result.detection_mapping
+        start, end = result.tracking_range
+        old = self.epicure.seg
+        outside_ids = set(np.unique(old[:start])) | set(np.unique(old[end + 1:]))
+        replacements = {}
+        for (_frame, label), target in mapping.items():
+            replacements.setdefault(label, set())
+            if target is not None:
+                replacements[label].add(target[1])
+        groups = {}
+        for name, labels in self.epicure.groups.items():
+            retained = set()
+            for label in labels:
+                retained.update(replacements.get(label, {label}))
+                if label in outside_ids:
+                    retained.add(label)
+            if retained:
+                groups[name] = sorted(retained)
+        self.epicure.groups = groups
+        self.epicure.update_group_lists()
+
+        inspecting = self.epicure.inspecting
+        events = inspecting.events
+        if events is None or len(events.data) == 0:
+            return
+        event_labels = np.copy(events.properties["label"])
+        removed = []
+        for index, (position, label) in enumerate(zip(events.data, event_labels)):
+            key = (int(position[0]), int(label))
+            if key not in mapping:
+                continue
+            target = mapping[key]
+            if target is None:
+                removed.append(index)
+            else:
+                event_labels[index] = target[1]
+        events.properties = {**events.properties, "label": event_labels}
+        for index in reversed(removed):
+            inspecting.exonerate_one(index, remove_division=False)
+        inspecting.update_nevents_display()
+
     def _commit_tracking_result(self, result: TrackingResult):
+        self.remap_detection_references(result.detection_mapping, result.tracking_range)
+        self._remap_tracking_annotations(result)
         self.epicure.seg = result.labels
         self.epicure.seglayer.data = result.labels
         self.graph = result.graph
@@ -1015,6 +1071,14 @@ class Tracking(QWidget):
             result = prepare_tracking_result(self.epicure.seg, self.graph, proposal)
             self._commit_tracking_result(result)
             self.epicure.finish_update(contour=2)
+        except TrackingBoundaryError as exc:
+            self._restore_tracking_state(snapshot)
+            self.tracking_conflicts = [
+                item for item in self.tracking_conflicts
+                if getattr(item, "correction_kind", None) is not None
+            ] + list(exc.conflicts)
+            self.update_conflict_status()
+            raise
         except BaseException:
             self._restore_tracking_state(snapshot)
             raise
@@ -1125,6 +1189,8 @@ class Tracking(QWidget):
         forbidden = []
         for entry in entries:
             if isinstance(entry, Mapping):
+                if entry.get("missing_endpoints"):
+                    continue
                 decision = entry.get("decision")
                 source = entry.get("source")
                 target = entry.get("target")
@@ -1190,18 +1256,17 @@ class Tracking(QWidget):
             for conflict in self.tracking_conflicts
             if getattr(conflict, "correction_kind", None) is not None
         ]
-        if correction_conflicts:
-            first = correction_conflicts[0]
+        if self.tracking_conflicts:
+            messages = [getattr(item, "reason", "") or getattr(item, "message", str(item))
+                        for item in self.tracking_conflicts]
             self.conflict_status.setText(
-                f"{len(correction_conflicts)} tracking correction conflict(s). "
-                f"{first.reason} Edit the missing endpoints or dismiss the retained correction."
+                f"{len(messages)} tracking conflict(s). " + "\n".join(messages)
             )
             self.conflict_status.setVisible(True)
-            self.dismiss_conflict.setVisible(True)
         else:
             self.conflict_status.setText("")
             self.conflict_status.setVisible(False)
-            self.dismiss_conflict.setVisible(False)
+        self.dismiss_conflict.setVisible(bool(correction_conflicts))
 
     def proposal_from_trackastra_result(
         self,
@@ -1256,10 +1321,10 @@ class Tracking(QWidget):
             automatic_edges.append((repair.source, repair.target))
 
         effective_edges, replayed_corrections, association_conflicts = reconcile_association_edges(
-            detection_keys, automatic_edges, self.correction_ledger
+            detection_keys, automatic_edges, self.correction_ledger, tracking_range=(start, end)
         )
         effective_edges, replayed_divisions, division_conflicts = reconcile_division_edges(
-            detection_keys, effective_edges, self.correction_ledger
+            detection_keys, effective_edges, self.correction_ledger, tracking_range=(start, end)
         )
         outgoing = {}
         incoming = {}
@@ -1540,8 +1605,8 @@ class Tracking(QWidget):
             if df is None:
                 continue
             if flow_v is not None:
-                c0 = np.array( np.floor( df["centroid-0"] ), dtype="uint8" )
-                c1 = np.array( np.floor( df["centroid-1"] ), dtype="uint8" )
+                c0 = np.array( np.floor( df["centroid-0"] ), dtype=np.intp )
+                c1 = np.array( np.floor( df["centroid-1"] ), dtype=np.intp )
                 df["centroid-0"] = df["centroid-0"] - flow_v[c0,c1]
                 df["centroid-1"] = df["centroid-1"] - flow_u[c0,c1]
             regionprops.append(df)

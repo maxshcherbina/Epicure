@@ -33,7 +33,10 @@ failure leaves the current segmentation, graph, events, and corrections unchange
 ### Shared controls and preprocessing
 
 - `Track only some frames` applies the inclusive tracking range to TrackAstra.
-  Frames and valid relationships outside that range are preserved.
+  Frames and valid relationships outside that range are preserved. If the proposed
+  tracks cannot preserve the boundary identities or division order, the run stops
+  without changing your tracks. The Track tab explains the conflict; expand the
+  range to include the affected tracks and run again.
 - `Remove border cells` supplies the shared border distance. The production
   default is 1 pixel, and whole border detections are excluded only inside the
   selected tracking range.
@@ -54,8 +57,10 @@ or forbidden decisions keyed to frame-local detections. A later TrackAstra run
 recomputes automatic links but reapplies valid human decisions as hard constraints.
 If a segmentation edit removes a correction endpoint, EpiCure keeps the evidence
 and shows the missing endpoint in the Track tab instead of guessing another cell.
-Correct the segmentation/relationship and rerun, or use `Dismiss first correction
-conflict` to deliberately remove that retained correction.
+Corrections follow cells when tracking or a manual join changes their label numbers.
+If an endpoint was removed, use `Dismiss first correction conflict` to remove
+the retained decision, then add the intended relationship again. Reusing the
+old label number does not automatically restore a missing endpoint.
 
 ### Inspect and saved results
 

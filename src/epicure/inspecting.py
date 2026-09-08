@@ -1511,15 +1511,8 @@ class Inspecting(QWidget):
         for review in metadata.get("division_reviews", ()):
             if not review.get("suspicious"):
                 continue
-            parent_frame, _parent_label = review["parent"]
-            parent_id = int(
-                self.epicure.seg[
-                    parent_frame,
-                    int(round(review["parent_y"])),
-                    int(round(review["parent_x"])),
-                ]
-            )
-            if parent_id == 0:
+            parent_frame, parent_id = review["parent"]
+            if not np.any(self.epicure.seg[parent_frame] == parent_id):
                 continue
             self.add_event(
                 (
@@ -1539,15 +1532,8 @@ class Inspecting(QWidget):
                 or repair.get("distance_per_frame", 0) > 15.0
             ):
                 continue
-            target_frame, _target_label = repair["target"]
-            target_id = int(
-                self.epicure.seg[
-                    target_frame,
-                    int(round(repair["target_y"])),
-                    int(round(repair["target_x"])),
-                ]
-            )
-            if target_id == 0:
+            target_frame, target_id = repair["target"]
+            if not np.any(self.epicure.seg[target_frame] == target_id):
                 continue
             self.add_event(
                 (target_frame, repair["target_y"], repair["target_x"]),

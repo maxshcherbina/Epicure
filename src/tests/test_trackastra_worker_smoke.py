@@ -22,7 +22,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_real_arm64_worker_loads_model_and_returns_division_aware_tables():
+@pytest.mark.parametrize("empty_frame", [False, True])
+def test_real_arm64_worker_loads_model_and_returns_division_aware_tables(empty_frame):
     rng = np.random.default_rng(42)
     movie = rng.integers(0, 20, size=(4, 64, 64), dtype=np.uint8)
     segmentations = np.zeros(movie.shape, dtype=np.uint16)
@@ -33,6 +34,8 @@ def test_real_arm64_worker_loads_model_and_returns_division_aware_tables():
     segmentations[2, 31:43, 34:46] = 4
     segmentations[3, 18:30, 17:29] = 5
     segmentations[3, 32:44, 35:47] = 6
+    if empty_frame:
+        segmentations[1] = 0
     movie[segmentations > 0] = 180
 
     result = run_trackastra(movie, segmentations, start_frame=20)
@@ -40,7 +43,7 @@ def test_real_arm64_worker_loads_model_and_returns_division_aware_tables():
     assert result.trackastra_version == TRACKASTRA_VERSION
     assert result.model == TRACKASTRA_MODEL
     assert result.device in {"mps", "cpu"}
-    assert {(item.frame, item.label) for item in result.detections} == {
+    expected = {
         (20, 1),
         (21, 2),
         (22, 3),
@@ -48,5 +51,8 @@ def test_real_arm64_worker_loads_model_and_returns_division_aware_tables():
         (23, 5),
         (23, 6),
     }
+    if empty_frame:
+        expected.remove((21, 2))
+    assert {(item.frame, item.label) for item in result.detections} == expected
     assert all(isinstance(item.score, float) for item in result.associations)
     assert isinstance(result.divisions, tuple)
