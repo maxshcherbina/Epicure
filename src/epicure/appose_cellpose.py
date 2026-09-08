@@ -6,7 +6,7 @@ import platform
 
 
 CELLPOSE_MODELS = ("cpsam", "cpsam_v2", "cpdino-vitb")
-CELLPOSE_DEFAULT_MODEL = "cpsam"
+CELLPOSE_DEFAULT_MODEL = "cpdino-vitb"
 
 
 def share_as_ndarray(img: np.ndarray) -> appose.NDArray:

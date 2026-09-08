@@ -29,6 +29,7 @@ def test_cellpose_model_dropdown_includes_dino_vitb(
 
     assert tuple(widget.cellpose_model.choices) == CELLPOSE_MODELS
     assert "cpdino-vitb" in widget.cellpose_model.choices
+    assert CELLPOSE_DEFAULT_MODEL == "cpdino-vitb"
     assert widget.cellpose_model.value == CELLPOSE_DEFAULT_MODEL
 
 

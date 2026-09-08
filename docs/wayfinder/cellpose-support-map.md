@@ -77,7 +77,8 @@ docs page are in scope**.
   `<movie>_cellpose.tif`. Closes the "GUI click not driven" gap from T4.
 - **Model dropdown (E1)** — the `cellpose_model` ComboBox offers **`cpsam` / `cpsam_v2` /
   `cpdino-vitb`**. Dispatch is `CellposeModel(pretrained_model=...)`. DINO ViT-B was enabled
-  after the ARM64/MPS pilot proved the model and supplied an exact DINOv3 source pin.
+  after the ARM64/MPS pilot proved the model and supplied an exact DINOv3 source pin; it is
+  now the default because it was faster and slightly better aligned to the membrane signal.
   "cellpose 3" (cyto3) still needs a separate cellpose-3.x environment → follow-up.
 - **Membrane-snap refinement (E2)** — optional "Snap boundaries to membrane" checkbox.
   Host-side seeded watershed (`refine_to_membrane`, uses epicure's skimage) flowing on the
